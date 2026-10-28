@@ -1,0 +1,27 @@
+# Entornos Virtuales
+.venv/
+venv/
+ENV/
+env/
+
+# Compiladores y Toolchains locales (PESADOS >700MB)
+**/w64devkit/
+w64devkit/
+
+# Ejecutables y Binarios Compilados
+*.exe
+*.o
+*.obj
+*.dll
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE & OS
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store

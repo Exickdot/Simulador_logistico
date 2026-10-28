@@ -1,0 +1,73 @@
+# Material Library for HC-SR04 Ultrasonic Sensor
+# PBR / Phong Materials - GrabCAD Realistic Finish
+
+newmtl Material_PCB
+Ka 0.04 0.12 0.25
+Kd 0.10 0.26 0.52
+Ks 0.25 0.30 0.35
+Ns 24.0
+d 1.0
+
+newmtl Material_Transducer_Can
+Ka 0.25 0.26 0.28
+Kd 0.78 0.80 0.84
+Ks 0.85 0.88 0.92
+Ns 68.0
+d 1.0
+
+newmtl Material_Transducer_Mesh
+Ka 0.18 0.19 0.20
+Kd 0.40 0.42 0.45
+Ks 0.65 0.68 0.70
+Ns 45.0
+d 1.0
+
+newmtl Material_Transducer_Cone
+Ka 0.30 0.32 0.34
+Kd 0.88 0.90 0.94
+Ks 0.90 0.92 0.95
+Ns 90.0
+d 1.0
+
+newmtl Material_Crystal_Oscillator
+Ka 0.28 0.29 0.31
+Kd 0.82 0.84 0.87
+Ks 0.92 0.94 0.96
+Ns 95.0
+d 1.0
+
+newmtl Material_Crystal_Base
+Ka 0.08 0.08 0.09
+Kd 0.15 0.15 0.17
+Ks 0.10 0.10 0.10
+Ns 10.0
+d 1.0
+
+newmtl Material_Header_Plastic
+Ka 0.08 0.08 0.09
+Kd 0.16 0.16 0.18
+Ks 0.20 0.20 0.20
+Ns 18.0
+d 1.0
+
+newmtl Material_Header_Pins
+Ka 0.25 0.25 0.28
+Kd 0.82 0.85 0.89
+Ks 0.88 0.90 0.94
+Ns 75.0
+d 1.0
+
+newmtl Material_Mounting_Holes
+Ka 0.20 0.18 0.10
+Kd 0.72 0.65 0.35
+Ks 0.60 0.55 0.30
+Ns 35.0
+d 1.0
+
+newmtl Material_SMD_Chip
+Ka 0.08 0.08 0.08
+Kd 0.14 0.14 0.15
+Ks 0.25 0.25 0.25
+Ns 20.0
+d 1.0
+
