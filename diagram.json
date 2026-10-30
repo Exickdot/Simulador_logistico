@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "author": "Estacion Logistica Auto-TIF UNSA",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-arduino-uno",
+      "id": "uno",
+      "top": 120,
+      "left": 100,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-lcd1602",
+      "id": "lcd1",
+      "top": -40,
+      "left": 450,
+      "attrs": { "pins": "i2c" }
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "ultrasonic1",
+      "top": -60,
+      "left": 80,
+      "attrs": { "distance": "30" }
+    },
+    {
+      "type": "wokwi-servo",
+      "id": "servo1",
+      "top": 110,
+      "left": 480,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-photoresistor-sensor",
+      "id": "ldr1",
+      "top": 270,
+      "left": -160,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "pot1",
+      "top": 150,
+      "left": -140,
+      "attrs": { "value": "700" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_estop",
+      "top": 40,
+      "left": -120,
+      "attrs": { "color": "red", "label": "E-STOP (D2)" }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "bz1",
+      "top": -30,
+      "left": 330,
+      "attrs": { "volume": "0.1" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_run",
+      "top": 240,
+      "left": 450,
+      "attrs": { "color": "green", "label": "RUN (D11)" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_insp",
+      "top": 240,
+      "left": 510,
+      "attrs": { "color": "yellow", "label": "INSP (D12)" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_alarm",
+      "top": 240,
+      "left": 570,
+      "attrs": { "color": "red", "label": "ALARM (D13)" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_motor_pwm",
+      "top": 340,
+      "left": 420,
+      "attrs": { "color": "cyan", "label": "Lazo1 ENA (D3)" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_motor_in1",
+      "top": 340,
+      "left": 480,
+      "attrs": { "color": "blue", "label": "IN1 FWD (D4)" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_motor_in2",
+      "top": 340,
+      "left": 540,
+      "attrs": { "color": "orange", "label": "IN2 REV (D7)" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_light_pwm",
+      "top": 340,
+      "left": 600,
+      "attrs": { "color": "white", "label": "Lazo3 Luz (D6)" }
+    }
+  ],
+  "connections": [
+    [ "uno:GND.1", "lcd1:GND", "black", [ "v-20", "h260" ] ],
+    [ "uno:5V", "lcd1:VCC", "red", [ "v20", "h280", "v-280" ] ],
+    [ "uno:A4", "lcd1:SDA", "green", [ "v30", "h240", "v-310" ] ],
+    [ "uno:A5", "lcd1:SCL", "yellow", [ "v40", "h250", "v-310" ] ],
+
+    [ "ultrasonic1:VCC", "uno:5V", "red", [ "v30", "h-60", "v220" ] ],
+    [ "ultrasonic1:GND", "uno:GND.1", "black", [ "v20", "h50" ] ],
+    [ "uno:8", "ultrasonic1:TRIG", "orange", [ "v-40", "h-120" ] ],
+    [ "uno:9", "ultrasonic1:ECHO", "purple", [ "v-50", "h-100" ] ],
+
+    [ "servo1:V+", "uno:5V", "red", [ "h-40", "v150" ] ],
+    [ "servo1:GND", "uno:GND.2", "black", [ "h-50", "v160" ] ],
+    [ "uno:5", "servo1:PWM", "orange", [ "v-20", "h180" ] ],
+
+    [ "btn_estop:1.l", "uno:2", "red", [ "h0" ] ],
+    [ "btn_estop:2.l", "uno:GND.1", "black", [ "h-20", "v60" ] ],
+
+    [ "ldr1:VCC", "uno:5V", "red", [ "h40", "v40" ] ],
+    [ "ldr1:GND", "uno:GND.2", "black", [ "h50", "v30" ] ],
+    [ "ldr1:AO", "uno:A0", "green", [ "h60", "v10" ] ],
+
+    [ "pot1:VCC", "uno:5V", "red", [ "v40", "h120" ] ],
+    [ "pot1:GND", "uno:GND.2", "black", [ "v30", "h130" ] ],
+    [ "pot1:SIG", "uno:A1", "blue", [ "v20", "h150" ] ],
+
+    [ "uno:10", "bz1:2", "purple", [ "v-60", "h120" ] ],
+    [ "uno:GND.1", "bz1:1", "black", [ "v-20", "h140" ] ],
+
+    [ "uno:11", "led_run:A", "green", [ "v-10", "h220", "v150" ] ],
+    [ "led_run:C", "uno:GND.2", "black", [ "v20", "h-220" ] ],
+
+    [ "uno:12", "led_insp:A", "yellow", [ "v-15", "h280", "v155" ] ],
+    [ "led_insp:C", "uno:GND.2", "black", [ "v20", "h-280" ] ],
+
+    [ "uno:13", "led_alarm:A", "red", [ "v-20", "h340", "v160" ] ],
+    [ "led_alarm:C", "uno:GND.2", "black", [ "v20", "h-340" ] ],
+
+    [ "uno:3", "led_motor_pwm:A", "cyan", [ "v-5", "h190", "v240" ] ],
+    [ "led_motor_pwm:C", "uno:GND.2", "black", [ "v20", "h-220" ] ],
+
+    [ "uno:4", "led_motor_in1:A", "blue", [ "v-10", "h250", "v245" ] ],
+    [ "led_motor_in1:C", "uno:GND.2", "black", [ "v20", "h-280" ] ],
+
+    [ "uno:7", "led_motor_in2:A", "orange", [ "v-15", "h270", "v245" ] ],
+    [ "led_motor_in2:C", "uno:GND.2", "black", [ "v20", "h-300" ] ],
+
+    [ "uno:6", "led_light_pwm:A", "white", [ "v-15", "h310", "v250" ] ],
+    [ "led_light_pwm:C", "uno:GND.2", "black", [ "v20", "h-340" ] ]
+  ],
+  "dependencies": {}
+}
+

@@ -226,7 +226,9 @@ void loop() {
         // Corte instantáneo de actuadores
         actuarMotores(0, false);
         actuarIluminacion(0);
-        Serial.println(F("{\"ALERTA\":\"PARADA_EMERGENCIA_ACTIVADA\",\"TIMESTAMP_MS\":") + String(now) + F("}"));
+        Serial.print(F("{\"ALERTA\":\"PARADA_EMERGENCIA_ACTIVADA\",\"TIMESTAMP_MS\":"));
+        Serial.print(now);
+        Serial.println(F("}"));
     }
 
     // 2. Procesamiento de Comandos Seriales / Bluetooth entrantes
@@ -438,10 +440,12 @@ void tareaMaquinaEstados() {
                 }
                 actuarServo(cvAnguloServo);
 
-                Serial.println(F("{\"EVENTO\":\"CLASIFICACION_COMPLETA\",\"RESULTADO\":\"") + 
-                               String((piezaClasificada == PIEZA_CONFORME) ? "CONFORME" : 
-                                      (piezaClasificada == PIEZA_RETRABAJO) ? "RETRABAJO" : "RECHAZO") + 
-                               F("\",\"ANGULO\":") + String(cvAnguloServo) + F("}"));
+                Serial.print(F("{\"EVENTO\":\"CLASIFICACION_COMPLETA\",\"RESULTADO\":\""));
+                Serial.print((piezaClasificada == PIEZA_CONFORME) ? F("CONFORME") : 
+                             (piezaClasificada == PIEZA_RETRABAJO) ? F("RETRABAJO") : F("RECHAZO"));
+                Serial.print(F("\",\"ANGULO\":"));
+                Serial.print(cvAnguloServo);
+                Serial.println(F("}"));
             }
             break;
 
@@ -552,20 +556,31 @@ void procesarComandosSeriales() {
         } else if (tipo == F("RETRABAJO")) {
             piezaClasificada = PIEZA_RETRABAJO;
         }
-        Serial.println(F("{\"RESP\":\"CMD_OK\",\"CLASIFICACION_ASIGNADA\":\"") + tipo + F("\"}"));
+        Serial.print(F("{\"RESP\":\"CMD_OK\",\"CLASIFICACION\":\""));
+        Serial.print(tipo);
+        Serial.println(F("\"}"));
+    } else if (cmd.startsWith(F("SIM:"))) {
+        // Trama atómica rápida: SIM:<dist_cm>,<lux_pct> (ej. SIM:8.2,78.0)
+        simulacionActiva = true;
+        int sepIdx = cmd.indexOf(',');
+        if (sepIdx > 4) {
+            pvDistanciaCm = cmd.substring(4, sepIdx).toFloat();
+            pvIluminacionPct = cmd.substring(sepIdx + 1).toFloat();
+        }
+        // Silencio absoluto en transmisión para mantener el canal UART 100% libre
     } else if (cmd.startsWith(F("SIM_DIST:"))) {
         simulacionActiva = true;
         pvDistanciaCm = cmd.substring(9).toFloat();
-        Serial.println(F("{\"RESP\":\"SIM_OK\",\"DIST_FORZADA\":") + String(pvDistanciaCm) + F("}"));
     } else if (cmd.startsWith(F("SIM_LDR:"))) {
         simulacionActiva = true;
         pvIluminacionPct = cmd.substring(8).toFloat();
-        Serial.println(F("{\"RESP\":\"SIM_OK\",\"LUX_FORZADO\":") + String(pvIluminacionPct) + F("}"));
     } else if (cmd == F("SIM_OFF")) {
         simulacionActiva = false;
         Serial.println(F("{\"RESP\":\"SIM_OFF\",\"MODO\":\"HARDWARE_REAL\"}"));
-    } else {
-        Serial.println(F("{\"RESP\":\"COMANDO_DESCONOCIDO\",\"CMD\":\"") + cmd + F("\"}"));
+    } else if (cmd.length() > 0) {
+        Serial.print(F("{\"RESP\":\"CMD_ERR\",\"CMD\":\""));
+        Serial.print(cmd);
+        Serial.println(F("\"}"));
     }
 }
 

@@ -81,8 +81,8 @@ El sistema automatiza una estación logística industrial con tres lazos de cont
   - **Pestaña 4 (Opción A):** Gemelo Digital 3D CAD acelerado por GPU (`pyopengltk` + `PyOpenGL`). Carga el ensamble `modelsd/faja_transportadora_ensamble.obj` en Display Lists, cámara orbital interactiva con presets técnicos, banda móvil, cajas dinámicas, haz sonar HC-SR04, foco LED dinámico y panel de control/telemetría sincronizado en vivo.
 
 ### 3.4 Gemelo Digital 3D Nativo Python (`simulador_3d_desktop.py`)
-- **Estado:** ✅ 100% Funcional y Optimizado con Ensamble CAD GrabCAD. Lanzador: `iniciar_simulador_3d.bat`.
-- **Detalle:** Construido en Pygame-ce + PyOpenGL. Renderizado 3D de alta fidelidad acelerado en GPU mediante Display Lists (`faja_modular_estacion_3d.obj`). Flujo unidireccional físico estricto: Entrada por gravedad -> Faja CAD -> Zona de Inspección Fotométrica (Lazo 3) -> Sensor Sonar HC-SR04 con incidencia normal a 90° -> Caída libre por rampa -> Carro móvil indexador M-102 con 3 gavetas (Retrabajo 45°, Conforme 90°, Rechazo 135°). Consola retro industrial CRT inferior de 195 px unificada.
+- **Estado:** ✅ 100% Funcional y Optimizado con Ensamble CAD GrabCAD e Integración HIL Wokwi. Lanzador: `iniciar_simulador_3d.bat`.
+- **Detalle:** Construido en Pygame-ce + PyOpenGL. Renderizado 3D de alta fidelidad acelerado en GPU mediante Display Lists (`faja_modular_estacion_3d.obj`). Flujo unidireccional físico estricto: Entrada por gravedad -> Faja CAD -> Zona de Inspección Fotométrica (Lazo 3) -> Sensor Sonar HC-SR04 con incidencia normal a 90° -> Caída libre por rampa -> Carro móvil indexador M-102 con 3 gavetas (Retrabajo 45°, Conforme 90°, Rechazo 135°). Consola retro industrial CRT inferior de 195 px unificada con botón y atajo de teclado (`W`) para enlace Hardware-In-The-Loop con Wokwi (puerto 4000). Telemetría en vivo sincronizada con los ciclos del ATmega328P.
 
 ### 3.5 Gemelo Digital 3D Nativo C++ (`cpp_digital_twin/`)
 - **Estado:** ✅ 100% Compilado y Operativo. Lanzador: `iniciar_simulador_cpp.bat`.
@@ -92,12 +92,18 @@ El sistema automatiza una estación logística industrial con tres lazos de cont
 - **Estado:** ✅ Piezas modeladas en `.obj` y `.stl`.
 - **Detalle:** Perfiles T-Slot 20x20 mm, rodillos con rodamientos 608ZZ, patas laterales y extendidas, soporte de sensor, sensor HC-SR04, motor NEMA 17, banda transportadora y rampa de descarte. Visor de inspección individual: `modelsd/ver_faja_3d.bat`.
 
+### 3.7 Simulación Circuital e Integración HIL Wokwi (`diagram.json`, `wokwi.toml`, `WOKWI_GUIA.md`)
+- **Estado:** ✅ 100% Configurado, Verificado y Calibrado. Guía paso a paso: `WOKWI_GUIA.md`.
+- **Detalle:** Circuito esquemático completo de Arduino Uno R3 en Wokwi con puerto RFC2217 (`localhost:4000`). Cliente HIL bidireccional integrado tanto en `simulador_3d_desktop.py` (visor 3D nativo preferido) como en `simulador_digital_twin.py` (suite SCADA). 
+- **Protocolo de Comunicación:** Trama atómica combinada `SIM:<dist>,<lux>\n` espaciada a 10 Hz (100 ms) con control de concurrencia (`threading.Lock` y `.flush()`), eliminando desbordes del búfer UART de 64 bytes del ATmega328P. El firmware responde silenciosamente en modo simulación para mantener holgura total en 9600 baudios y garantizar lecturas fotométricas exactas (Conforme >= 65%, Retrabajo >= 45%, Rechazo < 45%). Conmutación en caliente segura hacia emulación interna Python si Wokwi no está en ejecución.
+- **Herramientas de Compilación:** `compilar_arduino.bat` con detección automática de `arduino-cli` y generación de binarios en `EstacionLogistica/build/`. Tag git de respaldo: `002_diseño_estable`.
+
 ---
 
 ## 4. REGLAS TÉCNICAS Y RESTRICCIONES CRÍTICAS DEL USUARIO
 
 1. **Sin Tecnologías Web para Simuladores de Escritorio:**
-   - La simulación principal debe ejecutarse en ventana nativa de escritorio (Python/Tkinter/OpenGL o C++), no en navegadores.
+   - La simulación principal debe ejecutarse en ventana nativa de escritorio (Python/Tkinter/OpenGL o C++), no en navegadores. Wokwi actúa como simulador de laboratorio circuital / HIL.
 2. **Cero Saturación de Almacenamiento / Protocolos Limpios:**
    - Dependencias instaladas estrictamente dentro del entorno virtual local [`.venv`](file:///c:/PY/Auto_tif/.venv).
    - `.gitignore` configurado estrictamente para ignorar `.venv/`, `**/w64devkit/` (740 MB), `*.exe` compilados y cachés `__pycache__/`.
@@ -113,5 +119,9 @@ El sistema automatiza una estación logística industrial con tres lazos de cont
 - [x] **Integración del Modelo 3D de `modelsd/` en `iniciar_simulador.bat` (Opción A):**
   - Implementada con éxito la **Pestaña 4 (`[4] GEMELO DIGITAL 3D (CAD / GPU)`)** en `simulador_digital_twin.py` con `pyopengltk`.
   - Display Lists compiladas en VRAM de la GPU, rotación orbital 360°, paneo, zoom, 5 presets de cámara, renderizado Color/Clay/Alámbrico, banda y rodillos animados, cajas dinámicas 3D, haz ultrasónico y panel lateral de telemetría y mandos en vivo.
+- [x] **Estandarización e Incorporación de Wokwi (`diagram.json`, `wokwi.toml`):**
+  - Creado el esquemático de simulación con resolución de inconsistencias de hardware (agregado LED IN2 en D7 para monitoreo completo del L298N).
+  - Verificada la compatibilidad total de los ángulos de clasificación del Servomotor SG90 con la cinemática de tolvas del Gemelo Digital.
+  - Documentada la guía completa de pruebas para capturas de informe en `WOKWI_GUIA.md`.
 - [ ] **Validación Matemática en MATLAB (Cuando el usuario lo requiera):**
   - Script `.m` para funciones de transferencia de Lazos 1 y 3, respuesta al escalón, márgenes de fase y estabilidad.

@@ -13,6 +13,7 @@ import os
 import time
 import math
 import random
+import threading
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -54,11 +55,131 @@ class SimulatedPackage:
     chute_anim_progress: float = 0.0
 
 
+class WokwiHILBridge:
+    """
+    Cliente de puente Hardware-In-The-Loop (HIL) para Wokwi Simulator en VS Code.
+    Se comunica bidireccionalmente vía RFC2217 / TCP Socket en localhost:4000.
+    """
+    def __init__(self, host="127.0.0.1", port=4000):
+        self.host = host
+        self.port = port
+        self.ser = None
+        self.is_connected = False
+        self.is_active = False
+        self.running = False
+        self.lock = threading.Lock()
+        self.thread = None
+        self.last_send_time = 0.0
+        
+        # Telemetría recibida desde ATmega328P
+        self.tlm_state = {
+            "fsm_state": "REPOSO",
+            "dist_cm": 50.0,
+            "pwm_motor": 0,
+            "lux_pct": 70.0,
+            "servo_deg": 90.0,
+            "emergency": False
+        }
+
+    def connect(self):
+        try:
+            import serial
+            import serial.rfc2217
+            url = f"rfc2217://{self.host}:{self.port}"
+            self.ser = serial.serial_for_url(url, baudrate=9600, timeout=0.1)
+            self.is_connected = True
+            self.is_active = True
+            self.running = True
+            self.thread = threading.Thread(target=self._worker_loop, daemon=True)
+            self.thread.start()
+            return True, f"Conectado a Wokwi ({self.host}:{self.port})"
+        except Exception:
+            try:
+                import serial
+                url = f"socket://{self.host}:{self.port}"
+                self.ser = serial.serial_for_url(url, baudrate=9600, timeout=0.1)
+                self.is_connected = True
+                self.is_active = True
+                self.running = True
+                self.thread = threading.Thread(target=self._worker_loop, daemon=True)
+                self.thread.start()
+                return True, f"Conectado a Wokwi Socket ({self.host}:{self.port})"
+            except Exception as e2:
+                self.is_connected = False
+                self.is_active = False
+                return False, f"Wokwi no responde en {self.host}:{self.port}.\nInicia la simulación en VS Code (F1 -> 'Wokwi: Start Simulator')."
+
+    def disconnect(self):
+        self.running = False
+        self.is_active = False
+        if self.ser:
+            try:
+                self.ser.close()
+            except Exception:
+                pass
+        self.ser = None
+        self.is_connected = False
+
+    def send_command(self, cmd_str: str):
+        if not self.is_connected or not self.ser:
+            return
+        with self.lock:
+            try:
+                line = f"{cmd_str.strip()}\n"
+                self.ser.write(line.encode('ascii'))
+                self.ser.flush()
+            except Exception:
+                self.disconnect()
+
+    def sync_sensors(self, dist_cm: float, lux_pct: float):
+        if not self.is_connected or not self.ser:
+            return
+        now = time.time()
+        # Espaciado a 10 Hz (100 ms) para mantener la UART 100% holgada y sin desborde
+        if now - self.last_send_time < 0.10:
+            return
+        self.last_send_time = now
+        with self.lock:
+            try:
+                # Trama atómica combinada (14 bytes): SIM:<dist>,<lux>
+                msg = f"SIM:{dist_cm:.1f},{lux_pct:.1f}\n"
+                self.ser.write(msg.encode('ascii'))
+                self.ser.flush()
+            except Exception:
+                self.disconnect()
+
+    def _worker_loop(self):
+        buf = ""
+        while self.running and self.ser:
+            try:
+                data = self.ser.read(self.ser.in_waiting or 1)
+                if data:
+                    buf += data.decode('ascii', errors='ignore')
+                    while '\n' in buf:
+                        line, buf = buf.split('\n', 1)
+                        line = line.strip()
+                        if line.startswith("TLM,"):
+                            parts = line.split(',')
+                            if len(parts) >= 7:
+                                with self.lock:
+                                    self.tlm_state["fsm_state"] = parts[1]
+                                    self.tlm_state["dist_cm"] = float(parts[2])
+                                    self.tlm_state["pwm_motor"] = int(parts[3])
+                                    self.tlm_state["lux_pct"] = float(parts[4])
+                                    self.tlm_state["servo_deg"] = float(parts[5])
+                                    self.tlm_state["emergency"] = (parts[6] == '1')
+            except Exception:
+                break
+        self.is_connected = False
+        self.is_active = False
+
+
 class VirtualIndustrialPlant:
     """
     Simulador de física continua de planta y emulación de firmware Arduino Uno R3.
     """
     def __init__(self):
+        self.hil_bridge = WokwiHILBridge()
         self.BELT_LENGTH_M = 1.0
         self.SENSOR_X_M = 0.82
         self.GATE_X_M = 0.90
@@ -159,98 +280,128 @@ class VirtualIndustrialPlant:
         return False
 
     def update_physics_and_firmware(self, dt: float):
-        if self.emergency_stop_latched:
-            self.motor_pwm = 0
-            self.led_pwm = 0
-            self.belt_speed_mps = 0.0
-            self.fsm_state = "EMERGENCIA"
-            return
+        # 0. MODO HARDWARE-IN-THE-LOOP (WOKWI ATMEGA328P ACTIVO)
+        if self.hil_bridge.is_connected and self.hil_bridge.is_active:
+            # Sincronizar lectura física actual hacia Wokwi
+            self.hil_bridge.sync_sensors(self.ultrasonic_dist_cm, self.total_lux_pct)
 
-        # 1. MÁQUINA DE ESTADOS FINITOS (FSM)
-        if self.fsm_state == "REPOSO":
-            self.target_servo_angle = 90.0
-            if any(not p.is_routed for p in self.packages):
-                self.fsm_state = "TRANSPORTE"
+            # Leer actuadores gobernados por el firmware de Wokwi
+            with self.hil_bridge.lock:
+                tlm = dict(self.hil_bridge.tlm_state)
 
-        elif self.fsm_state == "TRANSPORTE":
-            self.target_servo_angle = 90.0
-            for p in self.packages:
-                if not p.is_routed and not p.is_inspected:
-                    if abs(p.pos_x_m - self.SENSOR_X_M) < 0.035:
-                        self.fsm_state = "INSPECCION"
-                        self.inspect_timer = 0.0
-                        self.current_piece_under_inspection = p
-                        break
+            self.fsm_state = tlm["fsm_state"]
+            self.motor_pwm = tlm["pwm_motor"]
+            self.target_servo_angle = tlm["servo_deg"]
+            self.led_pwm = int(max(0, min(255, tlm["lux_pct"] * 2.55)))
+            
+            if tlm["emergency"]:
+                self.emergency_stop_latched = True
+            elif self.emergency_stop_latched and not tlm["emergency"]:
+                self.emergency_stop_latched = False
 
-        elif self.fsm_state == "INSPECCION":
-            self.inspect_timer += dt
-            if self.inspect_timer >= 1.2:
-                target_pkg = self.current_piece_under_inspection
-                if target_pkg:
-                    target_pkg.is_inspected = True
-                    if target_pkg.quality == "CONFORME":
-                        self.target_servo_angle = 90.0
-                        self.count_conforme += 1
-                        target_pkg.routed_chute = 2
-                    elif target_pkg.quality == "RETRABAJO":
-                        self.target_servo_angle = 45.0
-                        self.count_retrabajo += 1
-                        target_pkg.routed_chute = 1
-                    else: # RECHAZO
-                        self.target_servo_angle = 135.0
-                        self.count_rechazo += 1
-                        target_pkg.routed_chute = 3
-                    
-                    self.total_processed += 1
-                    target_pkg.is_diverting = True
-
-                self.fsm_state = "DESVIO"
-                self.divert_timer = 0.0
-
-        elif self.fsm_state == "DESVIO":
-            self.divert_timer += dt
-            if self.divert_timer >= 1.6:
-                self.target_servo_angle = 90.0
-                if self.current_piece_under_inspection:
-                    self.current_piece_under_inspection.is_routed = True
-                    self.current_piece_under_inspection = None
-                
-                self.fsm_state = "TRANSPORTE" if any(not p.is_routed for p in self.packages) else "REPOSO"
-
-        # Lazos de Control
-        # Lazo 1: Velocidad
-        if self.fsm_state == "TRANSPORTE":
-            if self.ultrasonic_dist_cm <= self.dist_critica_stop:
-                self.motor_pwm = 0
-            elif self.ultrasonic_dist_cm >= self.sp_dist_nominal:
-                self.motor_pwm = 200
+            # Lazo 2: Cinemática suave del servomotor
+            servo_speed = 320.0
+            angle_diff = self.target_servo_angle - self.servo_angle_deg
+            max_step = servo_speed * dt
+            if abs(angle_diff) <= max_step:
+                self.servo_angle_deg = self.target_servo_angle
             else:
-                factor = (self.ultrasonic_dist_cm - self.dist_critica_stop) / (self.sp_dist_nominal - self.dist_critica_stop)
-                self.motor_pwm = int(factor * 200)
-                self.motor_pwm = max(0, min(200, self.motor_pwm))
-        elif self.fsm_state == "DESVIO":
-            self.motor_pwm = 160
-        elif self.fsm_state == "INSPECCION":
-            self.motor_pwm = 0
-        else:
-            self.motor_pwm = 0
+                self.servo_angle_deg += math.copysign(max_step, angle_diff)
 
-        # Lazo 2: Servomotor SG90
-        servo_speed = 320.0
-        angle_diff = self.target_servo_angle - self.servo_angle_deg
-        max_step = servo_speed * dt
-        if abs(angle_diff) <= max_step:
-            self.servo_angle_deg = self.target_servo_angle
         else:
-            self.servo_angle_deg += math.copysign(max_step, angle_diff)
+            # MODO AUTÓNOMO LOCAL (EMULACIÓN PYTHON)
+            if self.emergency_stop_latched:
+                self.motor_pwm = 0
+                self.led_pwm = 0
+                self.belt_speed_mps = 0.0
+                self.fsm_state = "EMERGENCIA"
+                return
 
-        # Lazo 3: Iluminación
-        self.error_lux = self.sp_lux_pct - self.total_lux_pct
-        if self.fsm_state in ["TRANSPORTE", "INSPECCION"]:
-            calc_pwm = self.base_light_pwm + (self.kp_light * self.error_lux * 2.55)
-            self.led_pwm = int(max(0, min(255, calc_pwm)))
-        else:
-            self.led_pwm = 25
+            # 1. MÁQUINA DE ESTADOS FINITOS (FSM)
+            if self.fsm_state == "REPOSO":
+                self.target_servo_angle = 90.0
+                if any(not p.is_routed for p in self.packages):
+                    self.fsm_state = "TRANSPORTE"
+
+            elif self.fsm_state == "TRANSPORTE":
+                self.target_servo_angle = 90.0
+                for p in self.packages:
+                    if not p.is_routed and not p.is_inspected:
+                        if abs(p.pos_x_m - self.SENSOR_X_M) < 0.035:
+                            self.fsm_state = "INSPECCION"
+                            self.inspect_timer = 0.0
+                            self.current_piece_under_inspection = p
+                            break
+
+            elif self.fsm_state == "INSPECCION":
+                self.inspect_timer += dt
+                if self.inspect_timer >= 1.2:
+                    target_pkg = self.current_piece_under_inspection
+                    if target_pkg:
+                        target_pkg.is_inspected = True
+                        if target_pkg.quality == "CONFORME":
+                            self.target_servo_angle = 90.0
+                            self.count_conforme += 1
+                            target_pkg.routed_chute = 2
+                        elif target_pkg.quality == "RETRABAJO":
+                            self.target_servo_angle = 45.0
+                            self.count_retrabajo += 1
+                            target_pkg.routed_chute = 1
+                        else: # RECHAZO
+                            self.target_servo_angle = 135.0
+                            self.count_rechazo += 1
+                            target_pkg.routed_chute = 3
+                        
+                        self.total_processed += 1
+                        target_pkg.is_diverting = True
+
+                    self.fsm_state = "DESVIO"
+                    self.divert_timer = 0.0
+
+            elif self.fsm_state == "DESVIO":
+                self.divert_timer += dt
+                if self.divert_timer >= 1.6:
+                    self.target_servo_angle = 90.0
+                    if self.current_piece_under_inspection:
+                        self.current_piece_under_inspection.is_routed = True
+                        self.current_piece_under_inspection = None
+                    
+                    self.fsm_state = "TRANSPORTE" if any(not p.is_routed for p in self.packages) else "REPOSO"
+
+            # Lazos de Control
+            # Lazo 1: Velocidad
+            if self.fsm_state == "TRANSPORTE":
+                if self.ultrasonic_dist_cm <= self.dist_critica_stop:
+                    self.motor_pwm = 0
+                elif self.ultrasonic_dist_cm >= self.sp_dist_nominal:
+                    self.motor_pwm = 200
+                else:
+                    factor = (self.ultrasonic_dist_cm - self.dist_critica_stop) / (self.sp_dist_nominal - self.dist_critica_stop)
+                    self.motor_pwm = int(factor * 200)
+                    self.motor_pwm = max(0, min(200, self.motor_pwm))
+            elif self.fsm_state == "DESVIO":
+                self.motor_pwm = 160
+            elif self.fsm_state == "INSPECCION":
+                self.motor_pwm = 0
+            else:
+                self.motor_pwm = 0
+
+            # Lazo 2: Servomotor SG90
+            servo_speed = 320.0
+            angle_diff = self.target_servo_angle - self.servo_angle_deg
+            max_step = servo_speed * dt
+            if abs(angle_diff) <= max_step:
+                self.servo_angle_deg = self.target_servo_angle
+            else:
+                self.servo_angle_deg += math.copysign(max_step, angle_diff)
+
+            # Lazo 3: Iluminación
+            self.error_lux = self.sp_lux_pct - self.total_lux_pct
+            if self.fsm_state in ["TRANSPORTE", "INSPECCION"]:
+                calc_pwm = self.base_light_pwm + (self.kp_light * self.error_lux * 2.55)
+                self.led_pwm = int(max(0, min(255, calc_pwm)))
+            else:
+                self.led_pwm = 25
 
         # Dinámica Física Continua
         target_v = (self.motor_pwm / 255.0) * self.MAX_SPEED_MPS
@@ -1199,21 +1350,30 @@ class DigitalTwinApp:
         c1 = tk.LabelFrame(col_box, text=" Mando ", font=("Segoe UI", 7, "bold"), fg="#37474F", bg="#FFFFFF", padx=4, pady=3)
         c1.pack(side="left", fill="both", expand=True, padx=2)
         tk.Button(c1, text="START", bg="#2E7D32", fg="white", font=("Segoe UI", 8, "bold"), bd=1, relief="raised",
-                  command=lambda: setattr(self.plant, 'fsm_state', 'TRANSPORTE') if self.plant.fsm_state == 'REPOSO' else None).pack(fill="x", pady=1)
+                  command=self.on_start_clicked).pack(fill="x", pady=1)
         tk.Button(c1, text="STOP", bg="#546E7A", fg="white", font=("Segoe UI", 8, "bold"), bd=1, relief="raised",
-                  command=lambda: setattr(self.plant, 'fsm_state', 'REPOSO')).pack(fill="x", pady=1)
+                  command=self.on_stop_clicked).pack(fill="x", pady=1)
         tk.Button(c1, text="RESET", bg="#0277BD", fg="white", font=("Segoe UI", 7, "bold"), bd=1, relief="raised",
                   command=self.on_reset_clicked).pack(fill="x", pady=1)
+
+        # Enlace HIL Wokwi
+        c_hil = tk.LabelFrame(col_box, text=" Enlace HIL Wokwi ", font=("Segoe UI", 7, "bold"), fg="#01579B", bg="#FFFFFF", padx=4, pady=3)
+        c_hil.pack(side="left", fill="both", expand=True, padx=2)
+        self.btn_hil = tk.Button(c_hil, text="⚡ Conectar Wokwi\n(Port 4000)", bg="#E1F5FE", fg="#01579B", font=("Segoe UI", 7, "bold"), bd=1, relief="raised",
+                                 command=self.toggle_wokwi_hil)
+        self.btn_hil.pack(fill="x", pady=1)
+        self.lbl_hil_status = tk.Label(c_hil, text="● Modo Local", font=("Segoe UI", 6, "bold"), fg="#546E7A", bg="#FFFFFF")
+        self.lbl_hil_status.pack(anchor="center")
 
         # Alimentador
         c2 = tk.LabelFrame(col_box, text=" Alimentación ", font=("Segoe UI", 7, "bold"), fg="#37474F", bg="#FFFFFF", padx=4, pady=3)
         c2.pack(side="left", fill="both", expand=True, padx=2)
         tk.Button(c2, text="+ Conforme (90°)", bg="#388E3C", fg="white", font=("Segoe UI", 7), bd=1, relief="raised",
-                  command=lambda: self.plant.spawn_package("CONFORME")).pack(fill="x", pady=1)
+                  command=lambda: self.on_spawn_package("CONFORME")).pack(fill="x", pady=1)
         tk.Button(c2, text="+ Retrabajo (45°)", bg="#F57C00", fg="white", font=("Segoe UI", 7), bd=1, relief="raised",
-                  command=lambda: self.plant.spawn_package("RETRABAJO")).pack(fill="x", pady=1)
+                  command=lambda: self.on_spawn_package("RETRABAJO")).pack(fill="x", pady=1)
         tk.Button(c2, text="+ Rechazo (135°)", bg="#D32F2F", fg="white", font=("Segoe UI", 7), bd=1, relief="raised",
-                  command=lambda: self.plant.spawn_package("RECHAZO")).pack(fill="x", pady=1)
+                  command=lambda: self.on_spawn_package("RECHAZO")).pack(fill="x", pady=1)
 
         self.var_autofeed = tk.BooleanVar(value=True)
         tk.Checkbutton(c2, text="Auto (3.2s)", variable=self.var_autofeed, bg="#FFFFFF", fg="#263238", 
@@ -1256,9 +1416,69 @@ class DigitalTwinApp:
         self.slider_lux.set(val)
         self.on_ambient_lux_changed(val)
 
+    def on_start_clicked(self):
+        if self.plant.hil_bridge.is_connected:
+            self.plant.hil_bridge.send_command("START")
+        if self.plant.fsm_state == "REPOSO" and not self.plant.emergency_stop_latched:
+            self.plant.fsm_state = "TRANSPORTE"
+
+    def on_stop_clicked(self):
+        if self.plant.hil_bridge.is_connected:
+            self.plant.hil_bridge.send_command("STOP")
+        self.plant.fsm_state = "REPOSO"
+
+    def on_spawn_package(self, quality_type: Optional[str] = None):
+        self.plant.spawn_package(quality_type)
+
+    def toggle_wokwi_hil(self):
+        if not self.plant.hil_bridge.is_connected:
+            ok, msg = self.plant.hil_bridge.connect()
+            if ok:
+                self._update_hil_ui_state(True)
+                messagebox.showinfo(
+                    "Enlace HIL Wokwi Exitoso",
+                    f"¡Conexión establecida con Wokwi en puerto 4000!\n\n"
+                    f"{msg}\n\n"
+                    f"• El microcontrolador ATmega328P en Wokwi gobierna ahora la estación.\n"
+                    f"• Las cajas 3D transmiten distancias y lux en tiempo real.\n"
+                    f"• El motor y la compuerta 3D responden al PWM y servo de Wokwi."
+                )
+            else:
+                self._update_hil_ui_state(False)
+                messagebox.showwarning(
+                    "Enlace HIL Wokwi No Disponible",
+                    f"{msg}\n\n"
+                    f"Pasos para activar:\n"
+                    f"1. Abre VS Code.\n"
+                    f"2. Presiona F1 y escribe 'Wokwi: Start Simulator'.\n"
+                    f"3. Vuelve a pulsar este botón para sincronizar."
+                )
+        else:
+            self.plant.hil_bridge.disconnect()
+            self._update_hil_ui_state(False)
+            messagebox.showinfo("Enlace HIL Desconectado", "Se cerró el enlace con Wokwi.\nLa estación continúa operando con el emulador local en Python.")
+
+    def _update_hil_ui_state(self, connected: bool):
+        btn_txt = "✓ Wokwi Online\n(Desconectar)" if connected else "⚡ Conectar Wokwi\n(Port 4000)"
+        btn_bg = "#C8E6C9" if connected else "#E1F5FE"
+        btn_fg = "#1B5E20" if connected else "#01579B"
+        lbl_txt = "● HIL Activo (C++)" if connected else "● Modo Local"
+        lbl_fg = "#2E7D32" if connected else "#546E7A"
+
+        if hasattr(self, 'btn_hil'):
+            self.btn_hil.config(text=btn_txt, bg=btn_bg, fg=btn_fg)
+        if hasattr(self, 'lbl_hil_status'):
+            self.lbl_hil_status.config(text=lbl_txt, fg=lbl_fg)
+        if hasattr(self, 'btn3d_hil'):
+            self.btn3d_hil.config(text=btn_txt, bg=btn_bg, fg=btn_fg)
+        if hasattr(self, 'lbl3d_hil_status'):
+            self.lbl3d_hil_status.config(text=lbl_txt, fg=lbl_fg)
+
     def on_estop_clicked(self):
         new_state = not self.plant.emergency_stop_latched
         self.plant.trigger_emergency(new_state)
+        if self.plant.hil_bridge.is_connected:
+            self.plant.hil_bridge.send_command("STOP" if new_state else "RESET")
         text = "ENCLAVADO\n(Libere y Rearme)" if new_state else "PARADA DE\nEMERGENCIA\n(INT0 D2)"
         bg = "#5C0000" if new_state else "#C62828"
         self.btn_estop.config(text=text, bg=bg)
@@ -1266,6 +1486,8 @@ class DigitalTwinApp:
             self.btn3d_estop.config(text=text, bg=bg)
 
     def on_reset_clicked(self):
+        if self.plant.hil_bridge.is_connected:
+            self.plant.hil_bridge.send_command("RESET")
         if self.plant.emergency_stop_latched:
             self.plant.emergency_stop_latched = False
             self.btn_estop.config(text="PARADA DE\nEMERGENCIA\n(INT0 D2)", bg="#C62828")
@@ -1711,21 +1933,30 @@ class DigitalTwinApp:
         c1 = tk.LabelFrame(col_box, text=" Mando ", font=("Segoe UI", 7, "bold"), fg="#37474F", bg="#FFFFFF", padx=4, pady=3)
         c1.pack(side="left", fill="both", expand=True, padx=2)
         tk.Button(c1, text="START", bg="#2E7D32", fg="white", font=("Segoe UI", 8, "bold"), bd=1, relief="raised",
-                  command=lambda: setattr(self.plant, 'fsm_state', 'TRANSPORTE') if self.plant.fsm_state == 'REPOSO' else None).pack(fill="x", pady=1)
+                  command=self.on_start_clicked).pack(fill="x", pady=1)
         tk.Button(c1, text="STOP", bg="#546E7A", fg="white", font=("Segoe UI", 8, "bold"), bd=1, relief="raised",
-                  command=lambda: setattr(self.plant, 'fsm_state', 'REPOSO')).pack(fill="x", pady=1)
+                  command=self.on_stop_clicked).pack(fill="x", pady=1)
         tk.Button(c1, text="RESET", bg="#0277BD", fg="white", font=("Segoe UI", 7, "bold"), bd=1, relief="raised",
                   command=self.on_reset_clicked).pack(fill="x", pady=1)
+
+        # Enlace HIL Wokwi
+        c_hil = tk.LabelFrame(col_box, text=" Enlace HIL Wokwi ", font=("Segoe UI", 7, "bold"), fg="#01579B", bg="#FFFFFF", padx=4, pady=3)
+        c_hil.pack(side="left", fill="both", expand=True, padx=2)
+        self.btn3d_hil = tk.Button(c_hil, text="⚡ Conectar Wokwi\n(Port 4000)", bg="#E1F5FE", fg="#01579B", font=("Segoe UI", 7, "bold"), bd=1, relief="raised",
+                                   command=self.toggle_wokwi_hil)
+        self.btn3d_hil.pack(fill="x", pady=1)
+        self.lbl3d_hil_status = tk.Label(c_hil, text="● Modo Local", font=("Segoe UI", 6, "bold"), fg="#546E7A", bg="#FFFFFF")
+        self.lbl3d_hil_status.pack(anchor="center")
 
         # Alimentador
         c2 = tk.LabelFrame(col_box, text=" Alimentación ", font=("Segoe UI", 7, "bold"), fg="#37474F", bg="#FFFFFF", padx=4, pady=3)
         c2.pack(side="left", fill="both", expand=True, padx=2)
         tk.Button(c2, text="+ Conforme (90°)", bg="#388E3C", fg="white", font=("Segoe UI", 7), bd=1, relief="raised",
-                  command=lambda: self.plant.spawn_package("CONFORME")).pack(fill="x", pady=1)
+                  command=lambda: self.on_spawn_package("CONFORME")).pack(fill="x", pady=1)
         tk.Button(c2, text="+ Retrabajo (45°)", bg="#F57C00", fg="white", font=("Segoe UI", 7), bd=1, relief="raised",
-                  command=lambda: self.plant.spawn_package("RETRABAJO")).pack(fill="x", pady=1)
+                  command=lambda: self.on_spawn_package("RETRABAJO")).pack(fill="x", pady=1)
         tk.Button(c2, text="+ Rechazo (135°)", bg="#D32F2F", fg="white", font=("Segoe UI", 7), bd=1, relief="raised",
-                  command=lambda: self.plant.spawn_package("RECHAZO")).pack(fill="x", pady=1)
+                  command=lambda: self.on_spawn_package("RECHAZO")).pack(fill="x", pady=1)
 
         # Perturbación
         c3 = tk.LabelFrame(col_box, text=" Luz Externa ", font=("Segoe UI", 7, "bold"), fg="#37474F", bg="#FFFFFF", padx=4, pady=3)

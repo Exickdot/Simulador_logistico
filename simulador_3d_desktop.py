@@ -28,6 +28,7 @@ import os
 import math
 import time
 import random
+import threading
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -45,6 +46,128 @@ except ImportError:
 # Importar el emulador de planta física existente
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from emulator.plant_emulator import PlantPhysicsModel, VirtualArduinoFirmware, PlantState
+
+
+# =====================================================================================
+# CLIENTE PUENTE HARDWARE-IN-THE-LOOP (WOKWI SIMULATOR / RFC2217)
+# =====================================================================================
+class WokwiHILBridge:
+    """
+    Cliente de puente Hardware-In-The-Loop (HIL) para Wokwi Simulator en VS Code.
+    Se comunica bidireccionalmente vía RFC2217 / TCP Socket en localhost:4000.
+    """
+    def __init__(self, host="127.0.0.1", port=4000):
+        self.host = host
+        self.port = port
+        self.ser = None
+        self.is_connected = False
+        self.is_active = False
+        self.running = False
+        self.lock = threading.Lock()
+        self.thread = None
+        self.last_send_time = 0.0
+        
+        # Telemetría recibida desde ATmega328P
+        self.tlm_state = {
+            "fsm_state": "REPOSO",
+            "dist_cm": 50.0,
+            "pwm_motor": 0,
+            "lux_pct": 70.0,
+            "servo_deg": 90.0,
+            "emergency": False
+        }
+
+    def connect(self):
+        try:
+            import serial
+            import serial.rfc2217
+            url = f"rfc2217://{self.host}:{self.port}"
+            self.ser = serial.serial_for_url(url, baudrate=9600, timeout=0.1)
+            self.is_connected = True
+            self.is_active = True
+            self.running = True
+            self.thread = threading.Thread(target=self._worker_loop, daemon=True)
+            self.thread.start()
+            return True, f"Conectado a Wokwi ({self.host}:{self.port})"
+        except Exception:
+            try:
+                import serial
+                url = f"socket://{self.host}:{self.port}"
+                self.ser = serial.serial_for_url(url, baudrate=9600, timeout=0.1)
+                self.is_connected = True
+                self.is_active = True
+                self.running = True
+                self.thread = threading.Thread(target=self._worker_loop, daemon=True)
+                self.thread.start()
+                return True, f"Conectado a Wokwi Socket ({self.host}:{self.port})"
+            except Exception as e2:
+                self.is_connected = False
+                self.is_active = False
+                return False, f"Wokwi no responde en {self.host}:{self.port}.\nInicia la simulación en VS Code (F1 -> 'Wokwi: Start Simulator')."
+
+    def disconnect(self):
+        self.running = False
+        self.is_active = False
+        if self.ser:
+            try:
+                self.ser.close()
+            except Exception:
+                pass
+        self.ser = None
+        self.is_connected = False
+
+    def send_command(self, cmd_str: str):
+        if not self.is_connected or not self.ser:
+            return
+        with self.lock:
+            try:
+                line = f"{cmd_str.strip()}\n"
+                self.ser.write(line.encode('ascii'))
+                self.ser.flush()
+            except Exception:
+                self.disconnect()
+
+    def sync_sensors(self, dist_cm: float, lux_pct: float):
+        if not self.is_connected or not self.ser:
+            return
+        now = time.time()
+        # Espaciado a 10 Hz (100 ms) para mantener la UART 100% holgada y sin desborde
+        if now - self.last_send_time < 0.10:
+            return
+        self.last_send_time = now
+        with self.lock:
+            try:
+                # Trama atómica combinada (14 bytes): SIM:<dist>,<lux>
+                msg = f"SIM:{dist_cm:.1f},{lux_pct:.1f}\n"
+                self.ser.write(msg.encode('ascii'))
+                self.ser.flush()
+            except Exception:
+                self.disconnect()
+
+    def _worker_loop(self):
+        buf = ""
+        while self.running and self.ser:
+            try:
+                data = self.ser.read(self.ser.in_waiting or 1)
+                if data:
+                    buf += data.decode('ascii', errors='ignore')
+                    while '\n' in buf:
+                        line, buf = buf.split('\n', 1)
+                        line = line.strip()
+                        if line.startswith("TLM,"):
+                            parts = line.split(',')
+                            if len(parts) >= 7:
+                                with self.lock:
+                                    self.tlm_state["fsm_state"] = parts[1]
+                                    self.tlm_state["dist_cm"] = float(parts[2])
+                                    self.tlm_state["pwm_motor"] = int(parts[3])
+                                    self.tlm_state["lux_pct"] = float(parts[4])
+                                    self.tlm_state["servo_deg"] = float(parts[5])
+                                    self.tlm_state["emergency"] = (parts[6] == '1')
+            except Exception:
+                break
+        self.is_connected = False
+        self.is_active = False
 
 
 # =====================================================================================
@@ -845,13 +968,14 @@ class HUDOverlay:
 
         btn_y2 = btn_y1 + btn_h1 + 8
         btn_h2 = 28
-        b2_w = (desk_w - 16) // 3
-        b2_w_last = desk_w - 16 - (b2_w * 2)
+        b2_w = (desk_w - 24) // 4
+        b2_w_last = desk_w - 24 - (b2_w * 3)
 
         self.buttons.extend([
             {"id": "ADD_BOX", "label": "+ CAJA", "color": (70, 80, 95), "rect": pygame.Rect(desk_x, btn_y2, b2_w, btn_h2), "state": "NORMAL"},
             {"id": "RESET", "label": "RESET HW", "color": (50, 90, 120), "rect": pygame.Rect(desk_x + b2_w + 8, btn_y2, b2_w, btn_h2), "state": "NORMAL"},
-            {"id": "LIGHT", "label": "LUZ +/-", "color": (80, 85, 70), "rect": pygame.Rect(desk_x + (b2_w + 8) * 2, btn_y2, b2_w_last, btn_h2), "state": "NORMAL"},
+            {"id": "LIGHT", "label": "LUZ +/-", "color": (80, 85, 70), "rect": pygame.Rect(desk_x + (b2_w + 8) * 2, btn_y2, b2_w, btn_h2), "state": "NORMAL"},
+            {"id": "WOKWI", "label": "WOKWI HIL", "color": (15, 95, 145), "rect": pygame.Rect(desk_x + (b2_w + 8) * 3, btn_y2, b2_w_last, btn_h2), "state": "NORMAL"},
         ])
 
         v_y = btn_y2 + btn_h2 + 22
@@ -955,6 +1079,13 @@ class HUDOverlay:
         self._draw_text("• E-STOP (D2):", tx, ty, c_green, self.font_mono)
         es_str = "DISPARADO !!" if state.emergency_stop else "ARMADO / SEGURO"
         self._draw_text(es_str, tx + 135, ty, (255, 80, 80) if state.emergency_stop else (100, 220, 140), self.font_mono)
+
+        ty += dy
+        hil_on = getattr(state, 'hil_connected', False)
+        hil_str = "WOKWI (TCP 4000)" if hil_on else "LOCAL (PYTHON)"
+        hil_col = (100, 255, 140) if hil_on else (255, 190, 70)
+        self._draw_text("• MODO HIL:", tx, ty, c_green, self.font_mono)
+        self._draw_text(hil_str, tx + 135, ty, hil_col, self.font_mono)
 
     def _render_stats_screen(self, x: int, y: int, w: int, h: int, state: PlantState, counts: Optional[Tuple[int, int, int, int]]):
         self._draw_rect(x, y, w, h, (10, 12, 14))
@@ -1150,7 +1281,36 @@ class DigitalTwin3DApp:
         self.count_retrabajo = 0
         self.count_rechazo = 0
 
+        # Cliente Hardware-In-The-Loop Wokwi
+        self.hil_bridge = WokwiHILBridge()
+
         self._setup_opengl()
+
+    def toggle_wokwi_hil(self):
+        """Conecta o desconecta el puente Hardware-In-The-Loop con Wokwi (Port 4000)."""
+        if not self.hil_bridge.is_connected:
+            ok, msg = self.hil_bridge.connect()
+            if ok:
+                print(f"[HIL 3D] {msg}")
+                self._update_wokwi_button_state(True)
+            else:
+                print(f"[HIL 3D WARN] {msg}")
+                self._update_wokwi_button_state(False)
+        else:
+            self.hil_bridge.disconnect()
+            print("[HIL 3D] Desconectado de Wokwi.")
+            self._update_wokwi_button_state(False)
+
+    def _update_wokwi_button_state(self, connected: bool):
+        for btn in self.hud.buttons:
+            if btn["id"] == "WOKWI":
+                if connected:
+                    btn["label"] = "WOKWI [ON]"
+                    btn["color"] = (30, 140, 60)
+                else:
+                    btn["label"] = "WOKWI HIL"
+                    btn["color"] = (15, 95, 145)
+                break
 
     def _setup_opengl(self):
         glEnable(GL_DEPTH_TEST)
@@ -1227,6 +1387,8 @@ class DigitalTwin3DApp:
                         running = False
                     elif event.key == K_SPACE:
                         self.spawn_box()
+                    elif event.key == K_w:
+                        self.toggle_wokwi_hil()
                     elif event.key == K_1:
                         self.camera.set_preset(1)
                     elif event.key == K_2:
@@ -1244,16 +1406,24 @@ class DigitalTwin3DApp:
                             clicked_hud = True
                             b_id = btn["id"]
                             if b_id == "START":
+                                if self.hil_bridge.is_connected:
+                                    self.hil_bridge.send_command("START")
                                 self.firmware.fsm_state = "TRANSP"
                                 self.physics.state.emergency_stop = False
                             elif b_id == "STOP":
+                                if self.hil_bridge.is_connected:
+                                    self.hil_bridge.send_command("STOP")
                                 self.firmware.fsm_state = "REPOSO"
                             elif b_id == "ADD_BOX":
                                 self.spawn_box()
                             elif b_id == "ESTOP":
+                                if self.hil_bridge.is_connected:
+                                    self.hil_bridge.send_command("STOP")
                                 self.physics.trigger_emergency(True)
                                 self.firmware.execute_cycle(dt, 50.0, 50.0, True)
                             elif b_id == "RESET":
+                                if self.hil_bridge.is_connected:
+                                    self.hil_bridge.send_command("RESET")
                                 self.physics.trigger_emergency(False)
                                 self.firmware.fsm_state = "REPOSO"
                             elif b_id == "LIGHT":
@@ -1261,6 +1431,8 @@ class DigitalTwin3DApp:
                                     self.physics.inject_disturbance(15.0)
                                 else:
                                     self.physics.inject_disturbance(65.0)
+                            elif b_id == "WOKWI":
+                                self.toggle_wokwi_hil()
                             elif b_id in ("V1", "V2", "V3", "V4", "V5"):
                                 self.camera.set_preset(int(b_id[1]))
                             break
@@ -1309,32 +1481,63 @@ class DigitalTwin3DApp:
             else:
                 box_reflectance = self.physics.state.ambient_lux_pct
 
-            # Ciclo de control firmware
-            e_stop_flag = self.physics.state.emergency_stop
-            motor_pwm, led_pwm, servo_ang = self.firmware.execute_cycle(
-                dt, closest_dist_cm, box_reflectance, e_stop_flag
-            )
+            # Ciclo de control: HIL Wokwi vs Emulador Local
+            if self.hil_bridge.is_connected and self.hil_bridge.is_active:
+                # 1. Transmitir física continua calculada en 3D hacia Wokwi
+                self.hil_bridge.sync_sensors(closest_dist_cm, box_reflectance)
 
-            # Sincronizar posición del carro móvil indexador M-102
-            # El carro se desplaza hacia la gaveta de clasificación correspondiente a la pieza activa
-            active_target_box = None
-            for b in self.boxes:
-                if b.state in ("EN_FAJA", "EN_DESVIO") and b.pos_x >= 0.28:
-                    active_target_box = b
-                    break
+                # 2. Leer actuadores gobernados por el firmware de Wokwi
+                with self.hil_bridge.lock:
+                    tlm = dict(self.hil_bridge.tlm_state)
 
-            if active_target_box:
-                if active_target_box.quality == "RETRABAJO":
-                    self.firmware.servo_angle = 45
-                    self.firmware.target_cart_z = 0.16   # Desplaza tolva ámbar al centro
-                elif active_target_box.quality == "RECHAZO":
-                    self.firmware.servo_angle = 135
-                    self.firmware.target_cart_z = -0.16  # Desplaza tolva roja al centro
+                motor_pwm = tlm["pwm_motor"]
+                led_pwm = int(max(0, min(255, tlm["lux_pct"] * 2.55)))
+                servo_ang = tlm["servo_deg"]
+                fsm_st = tlm["fsm_state"]
+
+                self.firmware.fsm_state = fsm_st
+                self.firmware.servo_angle = servo_ang
+                
+                # Mover carro móvil indexador M-102 según el ángulo del servo de Wokwi
+                if servo_ang <= 60:
+                    self.firmware.target_cart_z = 0.16   # Retrabajo (45°) -> Tolva ámbar
+                elif servo_ang >= 115:
+                    self.firmware.target_cart_z = -0.16  # Rechazo (135°) -> Tolva roja
                 else:
-                    self.firmware.servo_angle = 90
-                    self.firmware.target_cart_z = 0.0    # Tolva verde en el centro
-            elif not any(b.state in ("EN_FAJA", "EN_DESVIO") for b in self.boxes):
-                self.firmware.target_cart_z = 0.0
+                    self.firmware.target_cart_z = 0.0    # Conforme (90°) -> Tolva verde
+
+                if tlm["emergency"]:
+                    self.physics.state.emergency_stop = True
+                elif self.physics.state.emergency_stop and not tlm["emergency"]:
+                    self.physics.state.emergency_stop = False
+
+                self.physics.state.hil_connected = True
+            else:
+                self.physics.state.hil_connected = False
+                e_stop_flag = self.physics.state.emergency_stop
+                motor_pwm, led_pwm, servo_ang = self.firmware.execute_cycle(
+                    dt, closest_dist_cm, box_reflectance, e_stop_flag
+                )
+
+                # Sincronizar posición del carro móvil indexador M-102 en modo local
+                active_target_box = None
+                for b in self.boxes:
+                    if b.state in ("EN_FAJA", "EN_DESVIO") and b.pos_x >= 0.28:
+                        active_target_box = b
+                        break
+
+                if active_target_box:
+                    if active_target_box.quality == "RETRABAJO":
+                        self.firmware.servo_angle = 45
+                        self.firmware.target_cart_z = 0.16   # Desplaza tolva ámbar al centro
+                    elif active_target_box.quality == "RECHAZO":
+                        self.firmware.servo_angle = 135
+                        self.firmware.target_cart_z = -0.16  # Desplaza tolva roja al centro
+                    else:
+                        self.firmware.servo_angle = 90
+                        self.firmware.target_cart_z = 0.0    # Tolva verde en el centro
+                elif not any(b.state in ("EN_FAJA", "EN_DESVIO") for b in self.boxes):
+                    self.firmware.target_cart_z = 0.0
 
             # Dinámica física continua (integra el movimiento suave del carro hacia target_cart_z)
             self.physics.step(motor_pwm, led_pwm, self.firmware.servo_angle, self.firmware.target_cart_z)

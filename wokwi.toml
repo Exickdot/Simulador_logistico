@@ -1,0 +1,5 @@
+[wokwi]
+version = 1
+firmware = "EstacionLogistica/build/EstacionLogistica.ino.hex"
+elf = "EstacionLogistica/build/EstacionLogistica.ino.elf"
+rfc2217ServerPort = 4000

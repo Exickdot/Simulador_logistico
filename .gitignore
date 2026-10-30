@@ -13,6 +13,10 @@ w64devkit/
 *.o
 *.obj
 *.dll
+*.hex
+*.elf
+*.eep
+EstacionLogistica/build/
 
 # Python Cache
 __pycache__/
