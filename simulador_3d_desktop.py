@@ -725,8 +725,8 @@ class LogisticsStationModel:
         Primitive3D.draw_cone(0.47, 0.428, 0.0, 0.040 + pulse, cone_len, (0.2, 0.7, 1.0), alpha=0.18)
 
     def draw_inspection_camera(self, led_pwm: int):
-        """Gantry de inspección óptica (QE-103) y foco LED (QL-103 / Lazo 3) en X = +0.355 m."""
-        gx = 0.355  # Alineado exactamente con la posición de frenado e inspección (d = 8.7 cm)
+        """Gantry de inspección óptica (QE-103) y foco LED (QL-103 / Lazo 3) a 10 cm del sensor."""
+        gx = 0.370  # Ubicado exactamente a 10 cm del sensor sonar (0.47 - 0.10 = 0.37 m)
         
         # Columnas del pórtico sobre el perfil
         Primitive3D.draw_box(gx, 0.54, -0.085, 0.020, 0.28, 0.020, self.C_ALU)
@@ -1478,8 +1478,9 @@ class DigitalTwin3DApp:
                         approaching_box = box
 
             # 3. Balance fotométrico dinámico (Lazo 3)
-            # Solo cuando la caja entra en la zona de cámara/sensor (d <= 14 cm), su reflectancia modula la lectura
-            if approaching_box and closest_dist_cm <= 14.0:
+            # El lector óptico / LDR está ubicado en la zona de inspección a 10 cm del sensor ultrasónico
+            # Solo modula la reflectancia de la pieza cuando esta se ubica dentro de la zona de inspección (d <= 10.0 cm)
+            if approaching_box and closest_dist_cm <= 10.0:
                 if approaching_box.quality == "CONFORME":
                     box_reflectance = 78.0  # Alta reflectancia
                 elif approaching_box.quality == "RETRABAJO":
