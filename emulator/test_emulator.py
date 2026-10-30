@@ -15,12 +15,12 @@ def test_closed_loops():
     assert firmware.fsm_state == "TRANSP"
     assert m_pwm == 200, f"Expected 200, got {m_pwm}"
     
-    # Test distance in ramp: 15 cm -> factor = (15-5)/(25-5) = 0.5 -> PWM = 100
+    # Test distance in ramp: 15 cm -> factor = (15-11.5)/(20-11.5) = 3.5/8.5 -> PWM = int(80 + factor * 120) = 129
     m_pwm, l_pwm, s_ang = firmware.execute_cycle(0.05, pv_dist=15.0, pv_lux=70.0, e_stop=False)
-    assert m_pwm == 100, f"Expected 100, got {m_pwm}"
+    assert m_pwm == 129, f"Expected 129, got {m_pwm}"
     
-    # Test distance <= 5 cm -> PWM = 0 (Stop)
-    m_pwm, l_pwm, s_ang = firmware.execute_cycle(0.05, pv_dist=4.5, pv_lux=70.0, e_stop=False)
+    # Test distance <= 11.5 cm -> PWM = 0 (Stop en inspección)
+    m_pwm, l_pwm, s_ang = firmware.execute_cycle(0.05, pv_dist=11.0, pv_lux=70.0, e_stop=False)
     assert m_pwm == 0, f"Expected 0, got {m_pwm}"
     print("  -> Lazo 1 PASÓ exitosamente.")
 

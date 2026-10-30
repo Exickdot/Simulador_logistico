@@ -734,8 +734,8 @@ class LogisticsStationModel:
         Primitive3D.draw_cone(0.47, 0.428, 0.0, 0.040 + pulse, cone_len, (0.2, 0.7, 1.0), alpha=0.18)
 
     def draw_inspection_camera(self, led_pwm: int):
-        """Gantry de inspección óptica (QE-103) y foco LED (QL-103 / Lazo 3) a 10 cm del sensor."""
-        gx = 0.370  # Ubicado exactamente a 10 cm del sensor sonar (0.47 - 0.10 = 0.37 m)
+        """Gantry de inspección óptica (QE-103) y foco LED (QL-103 / Lazo 3) en X = +0.355 m."""
+        gx = 0.355  # Posición original alineada con la faja GrabCAD y parada a 11.5 cm del sensor (0.47 - 0.115 = 0.355 m)
         
         # Columnas del pórtico sobre el perfil
         Primitive3D.draw_box(gx, 0.54, -0.085, 0.020, 0.28, 0.020, self.C_ALU)
@@ -1487,9 +1487,8 @@ class DigitalTwin3DApp:
                         approaching_box = box
 
             # 3. Balance fotométrico dinámico (Lazo 3)
-            # El lector óptico / LDR está ubicado en la zona de inspección a 10 cm del sensor ultrasónico
-            # Solo modula la reflectancia de la pieza cuando esta se ubica dentro de la zona de inspección (d <= 10.0 cm)
-            if approaching_box and closest_dist_cm <= 10.0:
+            # Solo cuando la caja entra en la zona de aproximación (d <= 14.0 cm), modula la lectura hacia el LDR
+            if approaching_box and closest_dist_cm <= 14.0:
                 if approaching_box.quality == "CONFORME":
                     box_reflectance = 78.0  # Alta reflectancia
                 elif approaching_box.quality == "RETRABAJO":
@@ -1515,14 +1514,6 @@ class DigitalTwin3DApp:
 
                 self.firmware.fsm_state = fsm_st
                 self.firmware.servo_angle = servo_ang
-                
-                # Mover carro móvil indexador M-102 según el ángulo del servo de Wokwi
-                if servo_ang <= 60:
-                    self.firmware.target_cart_z = 0.16   # Retrabajo (45°) -> Tolva ámbar
-                elif servo_ang >= 115:
-                    self.firmware.target_cart_z = -0.16  # Rechazo (135°) -> Tolva roja
-                else:
-                    self.firmware.target_cart_z = 0.0    # Conforme (90°) -> Tolva verde
 
                 if tlm["emergency"]:
                     self.physics.state.emergency_stop = True
@@ -1537,25 +1528,23 @@ class DigitalTwin3DApp:
                     dt, closest_dist_cm, box_reflectance, e_stop_flag
                 )
 
-                # Sincronizar posición del carro móvil indexador M-102 en modo local
-                active_target_box = None
-                for b in self.boxes:
-                    if b.state in ("EN_FAJA", "EN_DESVIO") and b.pos_x >= 0.28:
-                        active_target_box = b
-                        break
+            # Sincronizar posición del carro móvil indexador M-102 (tanto en local como en Wokwi)
+            # El carro se desplaza hacia la gaveta de clasificación correspondiente a la pieza activa
+            active_target_box = None
+            for b in self.boxes:
+                if b.state in ("EN_FAJA", "EN_DESVIO") and b.pos_x >= 0.28:
+                    active_target_box = b
+                    break
 
-                if active_target_box:
-                    if active_target_box.quality == "RETRABAJO":
-                        self.firmware.servo_angle = 45
-                        self.firmware.target_cart_z = 0.16   # Desplaza tolva ámbar al centro
-                    elif active_target_box.quality == "RECHAZO":
-                        self.firmware.servo_angle = 135
-                        self.firmware.target_cart_z = -0.16  # Desplaza tolva roja al centro
-                    else:
-                        self.firmware.servo_angle = 90
-                        self.firmware.target_cart_z = 0.0    # Tolva verde en el centro
-                elif not any(b.state in ("EN_FAJA", "EN_DESVIO") for b in self.boxes):
-                    self.firmware.target_cart_z = 0.0
+            if active_target_box:
+                if active_target_box.quality == "RETRABAJO":
+                    self.firmware.target_cart_z = 0.16   # Desplaza tolva ámbar al centro
+                elif active_target_box.quality == "RECHAZO":
+                    self.firmware.target_cart_z = -0.16  # Desplaza tolva roja al centro
+                else:
+                    self.firmware.target_cart_z = 0.0    # Tolva verde en el centro
+            elif not any(b.state in ("EN_FAJA", "EN_DESVIO") for b in self.boxes):
+                self.firmware.target_cart_z = 0.0
 
             # Dinámica física continua (integra el movimiento suave del carro hacia target_cart_z)
             self.physics.step(motor_pwm, led_pwm, self.firmware.servo_angle, self.firmware.target_cart_z)

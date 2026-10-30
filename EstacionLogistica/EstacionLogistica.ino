@@ -54,17 +54,20 @@
 #define LCD_COLS            16
 #define LCD_ROWS            2
 
-// Lazo 1: Transporte y Anticolisión
-#define DIST_MIN_STOP_CM    5.0f   // Distancia crítica de parada total (cm)
-#define DIST_MAX_NOMINAL_CM 25.0f  // Distancia segura nominal (cm)
+// Lazo 1: Transporte y Anticolisión (Calibrado 1:1 con simulación Python)
+#define DIST_MIN_STOP_CM    11.5f  // Distancia de parada para inspección (cm)
+#define DIST_MAX_NOMINAL_CM 20.0f  // Distancia inicio de desaceleración nominal (cm)
 #define PWM_MOTOR_NOMINAL   200    // Velocidad nominal de transporte
+#define PWM_MOTOR_MIN_RAMP  80     // Velocidad mínima en rampa proporcional
+#define PWM_MOTOR_EXPULSION 180    // Velocidad de expulsión en desvío
 #define PWM_MOTOR_MIN       0      // Parada completa
 
 // Lazo 2: Servomotor de Enrutamiento
 #define SERVO_ANG_RETRABAJO 45     // Tolva de Retrabajo
 #define SERVO_ANG_CONFORME  90     // Tolva Conforme / Paso Directo
 #define SERVO_ANG_RECHAZO   135    // Tolva de Rechazo
-#define TIEMPO_DESVIO_MS    2000   // Tiempo antes de retornar compuerta a neutro
+#define TIEMPO_INSPECCION_MS 800   // Duración de inspección (0.8s) idéntica a Python
+#define TIEMPO_DESVIO_MS    1000   // Tiempo de expulsión (1.0s) idéntico a Python
 
 // Lazo 3: Iluminación de Inspección
 #define SP_LUX_DEFAULT      70.0f  // Setpoint nominal de iluminancia (0 - 100%)
@@ -339,22 +342,21 @@ void tareaLazosControl() {
     // ---------------------------------------------------------------------------------
     if (estadoActual == ESTADO_TRANSPORTE) {
         if (pvDistanciaCm <= DIST_MIN_STOP_CM) {
-            // Parada total por proximidad de obstáculo / acumulación
+            // Parada total en zona de inspección
             cvPwmMotor = PWM_MOTOR_MIN;
         } else if (pvDistanciaCm >= DIST_MAX_NOMINAL_CM) {
             // Régimen de velocidad nominal
             cvPwmMotor = PWM_MOTOR_NOMINAL;
         } else {
-            // Rampa Proporcional continua entre 5 cm y 25 cm
-            // Pendiente m = (200 - 0) / (25 - 5) = 10 PWM/cm
-            float factorProporcional = (pvDistanciaCm - DIST_MIN_STOP_CM) / (DIST_MAX_NOMINAL_CM - DIST_MIN_STOP_CM);
-            cvPwmMotor = (int)(factorProporcional * PWM_MOTOR_NOMINAL);
-            cvPwmMotor = constrain(cvPwmMotor, PWM_MOTOR_MIN, PWM_MOTOR_NOMINAL);
+            // Rampa Proporcional continua idéntica a Python: 80 a 200 PWM entre 11.5 cm y 20.0 cm
+            float factor = (pvDistanciaCm - DIST_MIN_STOP_CM) / (DIST_MAX_NOMINAL_CM - DIST_MIN_STOP_CM);
+            cvPwmMotor = PWM_MOTOR_MIN_RAMP + (int)(factor * (PWM_MOTOR_NOMINAL - PWM_MOTOR_MIN_RAMP));
+            cvPwmMotor = constrain(cvPwmMotor, PWM_MOTOR_MIN_RAMP, PWM_MOTOR_NOMINAL);
         }
         actuarMotores(cvPwmMotor, true);
     } else if (estadoActual == ESTADO_DESVIO) {
-        // En desvío/expulsión: la faja debe avanzar para evacuar la pieza hacia la rampa/tolva
-        cvPwmMotor = PWM_MOTOR_NOMINAL;
+        // En desvío/expulsión: pulso controlado a 180 PWM idéntico a Python
+        cvPwmMotor = PWM_MOTOR_EXPULSION;
         actuarMotores(cvPwmMotor, true);
     } else {
         // En reposo o inspección estática, la faja permanece detenida
@@ -412,8 +414,8 @@ void tareaMaquinaEstados() {
             if (pvDistanciaCm > 15.0f) {
                 zonaInspeccionArmada = true;
             }
-            // Si una nueva pieza entra a la zona de inspección (distancia entre 3 cm y 10 cm)
-            if (zonaInspeccionArmada && pvDistanciaCm <= 10.0f && pvDistanciaCm >= 3.0f) {
+            // Si una nueva pieza entra a la zona de inspección (distancia <= 11.5 cm)
+            if (zonaInspeccionArmada && pvDistanciaCm <= DIST_MIN_STOP_CM && pvDistanciaCm >= 3.0f) {
                 estadoActual = ESTADO_INSPECCION;
                 tInicioInspeccion = now;
                 zonaInspeccionArmada = false;
@@ -423,8 +425,8 @@ void tareaMaquinaEstados() {
 
         case ESTADO_INSPECCION:
             setSenalizadores(false, true, false, false); // Amarillo parpadeante/fijo en inspección
-            // Simulación o evaluación de inspección durante 1.5 segundos
-            if (now - tInicioInspeccion >= 1500) {
+            // Simulación o evaluación de inspección durante 0.8 segundos (idéntico a Python)
+            if (now - tInicioInspeccion >= TIEMPO_INSPECCION_MS) {
                 // Si no se recibió clasificación por serial, se asigna lógica basada en lux y distancia
                 if (piezaClasificada == PIEZA_NINGUNA) {
                     if (pvIluminacionPct >= 65.0f) {
@@ -461,7 +463,7 @@ void tareaMaquinaEstados() {
 
         case ESTADO_DESVIO:
             setSenalizadores(true, true, false, false); // Verde + Amarillo durante expulsión
-            // Retorno temporizado de la compuerta a neutro (90°) tras el paso
+            // Retorno temporizado de la compuerta a neutro (90°) tras el paso (1.0s)
             if (now - tInicioDesvio >= TIEMPO_DESVIO_MS) {
                 actuarServo(SERVO_ANG_CONFORME);
                 piezaClasificada = PIEZA_NINGUNA;
