@@ -6,159 +6,170 @@
     {
       "type": "wokwi-arduino-uno",
       "id": "uno",
-      "top": 120,
+      "top": 80,
       "left": 100,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-breadboard",
+      "id": "bb1",
+      "top": 350,
+      "left": -30,
       "attrs": {}
     },
     {
       "type": "wokwi-lcd1602",
       "id": "lcd1",
-      "top": -40,
-      "left": 450,
+      "top": -90,
+      "left": 430,
       "attrs": { "pins": "i2c" }
     },
     {
       "type": "wokwi-hc-sr04",
       "id": "ultrasonic1",
-      "top": -60,
-      "left": 80,
+      "top": -90,
+      "left": 60,
       "attrs": { "distance": "30" }
     },
     {
       "type": "wokwi-servo",
       "id": "servo1",
-      "top": 110,
-      "left": 480,
+      "top": 100,
+      "left": 470,
       "attrs": {}
     },
     {
       "type": "wokwi-photoresistor-sensor",
       "id": "ldr1",
-      "top": 270,
+      "top": 260,
       "left": -160,
       "attrs": {}
     },
     {
       "type": "wokwi-potentiometer",
       "id": "pot1",
-      "top": 150,
-      "left": -140,
+      "top": 160,
+      "left": -160,
       "attrs": { "value": "700" }
     },
     {
       "type": "wokwi-pushbutton",
       "id": "btn_estop",
-      "top": 40,
-      "left": -120,
+      "top": 60,
+      "left": -150,
       "attrs": { "color": "red", "label": "E-STOP (D2)" }
     },
     {
       "type": "wokwi-buzzer",
       "id": "bz1",
-      "top": -30,
-      "left": 330,
+      "top": -80,
+      "left": 280,
       "attrs": { "volume": "0.1" }
     },
     {
       "type": "wokwi-led",
-      "id": "led_run",
-      "top": 240,
-      "left": 450,
-      "attrs": { "color": "green", "label": "RUN (D11)" }
-    },
-    {
-      "type": "wokwi-led",
-      "id": "led_insp",
-      "top": 240,
-      "left": 510,
-      "attrs": { "color": "yellow", "label": "INSP (D12)" }
-    },
-    {
-      "type": "wokwi-led",
-      "id": "led_alarm",
-      "top": 240,
-      "left": 570,
-      "attrs": { "color": "red", "label": "ALARM (D13)" }
-    },
-    {
-      "type": "wokwi-led",
       "id": "led_motor_pwm",
-      "top": 340,
-      "left": 420,
+      "top": 290,
+      "left": -10,
       "attrs": { "color": "cyan", "label": "Lazo1 ENA (D3)" }
     },
     {
       "type": "wokwi-led",
       "id": "led_motor_in1",
-      "top": 340,
-      "left": 480,
+      "top": 290,
+      "left": 55,
       "attrs": { "color": "blue", "label": "IN1 FWD (D4)" }
     },
     {
       "type": "wokwi-led",
       "id": "led_motor_in2",
-      "top": 340,
-      "left": 540,
+      "top": 290,
+      "left": 120,
       "attrs": { "color": "orange", "label": "IN2 REV (D7)" }
     },
     {
       "type": "wokwi-led",
       "id": "led_light_pwm",
-      "top": 340,
-      "left": 600,
+      "top": 290,
+      "left": 185,
       "attrs": { "color": "white", "label": "Lazo3 Luz (D6)" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_run",
+      "top": 290,
+      "left": 255,
+      "attrs": { "color": "green", "label": "RUN (D11)" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_insp",
+      "top": 290,
+      "left": 325,
+      "attrs": { "color": "yellow", "label": "INSP (D12)" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_alarm",
+      "top": 290,
+      "left": 395,
+      "attrs": { "color": "red", "label": "ALARM (D13)" }
     }
   ],
   "connections": [
-    [ "uno:GND.1", "lcd1:GND", "black", [ "v-20", "h260" ] ],
-    [ "uno:5V", "lcd1:VCC", "red", [ "v20", "h280", "v-280" ] ],
-    [ "uno:A4", "lcd1:SDA", "green", [ "v30", "h240", "v-310" ] ],
-    [ "uno:A5", "lcd1:SCL", "yellow", [ "v40", "h250", "v-310" ] ],
+    [ "uno:5V", "bb1:bp.1", "red", [ "v35", "h-145" ] ],
+    [ "uno:GND.1", "bb1:bn.1", "black", [ "v45", "h-135" ] ],
+    [ "bb1:bp.2", "bb1:tp.1", "red", [ "v0" ] ],
+    [ "bb1:bn.2", "bb1:tn.1", "black", [ "v0" ] ],
 
-    [ "ultrasonic1:VCC", "uno:5V", "red", [ "v30", "h-60", "v220" ] ],
-    [ "ultrasonic1:GND", "uno:GND.1", "black", [ "v20", "h50" ] ],
-    [ "uno:8", "ultrasonic1:TRIG", "orange", [ "v-40", "h-120" ] ],
-    [ "uno:9", "ultrasonic1:ECHO", "purple", [ "v-50", "h-100" ] ],
+    [ "ultrasonic1:VCC", "bb1:tp.5", "red", [ "v25", "h-80" ] ],
+    [ "ultrasonic1:GND", "bb1:tn.5", "black", [ "v15", "h-70" ] ],
+    [ "uno:8", "ultrasonic1:TRIG", "orange", [ "v-30", "h-30" ] ],
+    [ "uno:9", "ultrasonic1:ECHO", "purple", [ "v-40", "h-10" ] ],
 
-    [ "servo1:V+", "uno:5V", "red", [ "h-40", "v150" ] ],
-    [ "servo1:GND", "uno:GND.2", "black", [ "h-50", "v160" ] ],
-    [ "uno:5", "servo1:PWM", "orange", [ "v-20", "h180" ] ],
+    [ "bz1:1", "bb1:tn.14", "black", [ "v20", "h-40" ] ],
+    [ "uno:10", "bz1:2", "purple", [ "v-35", "h45" ] ],
 
-    [ "btn_estop:1.l", "uno:2", "red", [ "h0" ] ],
-    [ "btn_estop:2.l", "uno:GND.1", "black", [ "h-20", "v60" ] ],
+    [ "lcd1:VCC", "bb1:tp.23", "red", [ "v40", "h100" ] ],
+    [ "lcd1:GND", "bb1:tn.23", "black", [ "v30", "h110" ] ],
+    [ "uno:A4", "lcd1:SDA", "green", [ "v25", "h240", "v-280" ] ],
+    [ "uno:A5", "lcd1:SCL", "yellow", [ "v35", "h250", "v-280" ] ],
 
-    [ "ldr1:VCC", "uno:5V", "red", [ "h40", "v40" ] ],
-    [ "ldr1:GND", "uno:GND.2", "black", [ "h50", "v30" ] ],
-    [ "ldr1:AO", "uno:A0", "green", [ "h60", "v10" ] ],
+    [ "servo1:V+", "bb1:tp.25", "red", [ "v50", "h50" ] ],
+    [ "servo1:GND", "bb1:tn.25", "black", [ "v60", "h60" ] ],
+    [ "uno:5", "servo1:PWM", "orange", [ "v-25", "h195" ] ],
 
-    [ "pot1:VCC", "uno:5V", "red", [ "v40", "h120" ] ],
-    [ "pot1:GND", "uno:GND.2", "black", [ "v30", "h130" ] ],
-    [ "pot1:SIG", "uno:A1", "blue", [ "v20", "h150" ] ],
+    [ "btn_estop:1.l", "uno:2", "red", [ "h20", "v10" ] ],
+    [ "btn_estop:2.l", "bb1:bn.3", "black", [ "v200", "h135" ] ],
 
-    [ "uno:10", "bz1:2", "purple", [ "v-60", "h120" ] ],
-    [ "uno:GND.1", "bz1:1", "black", [ "v-20", "h140" ] ],
+    [ "pot1:VCC", "bb1:bp.5", "red", [ "v130", "h120" ] ],
+    [ "pot1:GND", "bb1:bn.5", "black", [ "v140", "h130" ] ],
+    [ "pot1:SIG", "uno:A1", "blue", [ "v30", "h250" ] ],
 
-    [ "uno:11", "led_run:A", "green", [ "v-10", "h220", "v150" ] ],
-    [ "led_run:C", "uno:GND.2", "black", [ "v20", "h-220" ] ],
+    [ "ldr1:VCC", "bb1:bp.8", "red", [ "v40", "h120" ] ],
+    [ "ldr1:GND", "bb1:bn.8", "black", [ "v50", "h130" ] ],
+    [ "ldr1:AO", "uno:A0", "green", [ "v20", "h240" ] ],
 
-    [ "uno:12", "led_insp:A", "yellow", [ "v-15", "h280", "v155" ] ],
-    [ "led_insp:C", "uno:GND.2", "black", [ "v20", "h-280" ] ],
+    [ "uno:3", "led_motor_pwm:A", "cyan", [ "v-20", "h-165", "v230" ] ],
+    [ "led_motor_pwm:C", "bb1:tn.2", "black", [ "v20" ] ],
 
-    [ "uno:13", "led_alarm:A", "red", [ "v-20", "h340", "v160" ] ],
-    [ "led_alarm:C", "uno:GND.2", "black", [ "v20", "h-340" ] ],
+    [ "uno:4", "led_motor_in1:A", "blue", [ "v-25", "h-110", "v235" ] ],
+    [ "led_motor_in1:C", "bb1:tn.5", "black", [ "v20" ] ],
 
-    [ "uno:3", "led_motor_pwm:A", "cyan", [ "v-5", "h190", "v240" ] ],
-    [ "led_motor_pwm:C", "uno:GND.2", "black", [ "v20", "h-220" ] ],
+    [ "uno:7", "led_motor_in2:A", "orange", [ "v-20", "h-55", "v230" ] ],
+    [ "led_motor_in2:C", "bb1:tn.8", "black", [ "v20" ] ],
 
-    [ "uno:4", "led_motor_in1:A", "blue", [ "v-10", "h250", "v245" ] ],
-    [ "led_motor_in1:C", "uno:GND.2", "black", [ "v20", "h-280" ] ],
+    [ "uno:6", "led_light_pwm:A", "white", [ "v-15", "h0", "v225" ] ],
+    [ "led_light_pwm:C", "bb1:tn.11", "black", [ "v20" ] ],
 
-    [ "uno:7", "led_motor_in2:A", "orange", [ "v-15", "h270", "v245" ] ],
-    [ "led_motor_in2:C", "uno:GND.2", "black", [ "v20", "h-300" ] ],
+    [ "uno:11", "led_run:A", "green", [ "v-15", "h50", "v225" ] ],
+    [ "led_run:C", "bb1:tn.15", "black", [ "v20" ] ],
 
-    [ "uno:6", "led_light_pwm:A", "white", [ "v-15", "h310", "v250" ] ],
-    [ "led_light_pwm:C", "uno:GND.2", "black", [ "v20", "h-340" ] ]
+    [ "uno:12", "led_insp:A", "yellow", [ "v-20", "h105", "v230" ] ],
+    [ "led_insp:C", "bb1:tn.18", "black", [ "v20" ] ],
+
+    [ "uno:13", "led_alarm:A", "red", [ "v-25", "h160", "v235" ] ],
+    [ "led_alarm:C", "bb1:tn.21", "black", [ "v20" ] ]
   ],
   "dependencies": {}
 }
-
