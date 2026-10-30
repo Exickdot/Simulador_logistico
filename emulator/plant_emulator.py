@@ -214,18 +214,18 @@ class VirtualArduinoFirmware:
         # 1. MÁQUINA DE ESTADOS FINITOS (FSM)
         if self.fsm_state == "REPOSO":
             self.servo_angle = 90
-            # Auto-inicio si se detecta producto entrando
-            if pv_dist > 15.0:
+            # Auto-inicio fluido al detectar piezas en línea
+            if pv_dist < 95.0 or pv_dist > 15.0:
                 self.fsm_state = "TRANSP"
 
         elif self.fsm_state == "TRANSP":
-            if 5.0 < pv_dist <= 10.0:
+            if pv_dist <= 11.5:
                 self.fsm_state = "INSPEC"
                 self.inspect_timer = 0.0
 
         elif self.fsm_state == "INSPEC":
             self.inspect_timer += dt
-            if self.inspect_timer >= 1.5:
+            if self.inspect_timer >= 0.8:
                 # Clasificación por reflectancia/iluminancia
                 if pv_lux >= 65.0:
                     self.piece_classification = "CONFORME"
@@ -245,24 +245,23 @@ class VirtualArduinoFirmware:
 
         elif self.fsm_state == "DESVIO":
             self.divert_timer += dt
-            if self.divert_timer >= 2.0:
-                self.servo_angle = 90
+            if self.divert_timer >= 1.0:
                 self.piece_classification = "NINGUNA"
-                self.fsm_state = "REPOSO"
+                self.fsm_state = "TRANSP"
 
         # 2. LAZO 1: Control de Velocidad y Anticolisión
         if self.fsm_state == "TRANSP":
-            if pv_dist <= 5.0:
+            if pv_dist <= 11.5:
                 self.motor_pwm = 0
-            elif pv_dist >= 25.0:
+            elif pv_dist >= 20.0:
                 self.motor_pwm = 200
             else:
-                factor = (pv_dist - 5.0) / (25.0 - 5.0)
-                self.motor_pwm = int(factor * 200)
-                self.motor_pwm = max(0, min(200, self.motor_pwm))
+                factor = (pv_dist - 11.5) / (20.0 - 11.5)
+                self.motor_pwm = int(80 + factor * 120)
+                self.motor_pwm = max(80, min(200, self.motor_pwm))
         elif self.fsm_state == "DESVIO":
-            # Pulso controlado de expulsión
-            self.motor_pwm = 150
+            # Pulso controlado de expulsión hacia la rampa
+            self.motor_pwm = 180
         else:
             self.motor_pwm = 0
 

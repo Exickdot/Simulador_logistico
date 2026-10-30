@@ -1,22 +1,25 @@
 """
 =====================================================================================
 GEMELO DIGITAL 3D - ESTACIÓN LOGÍSTICA DE CLASIFICACIÓN Y ENRUTAMIENTO
-Motor Gráfico 3D Nativo (OpenGL / Pygame-CE) - Entorno Industrial
+Motor Gráfico 3D Nativo (OpenGL / Pygame-CE) - Entorno Industrial GrabCAD
 =====================================================================================
 Este módulo renderiza en una ventana nativa de escritorio un entorno 3D fotorrealista
 y técnico de la estación logística controlada por el Arduino Uno R3:
 
-1. Faja transportadora con perfiles de aluminio Bosch Rexroth y banda móvil continua.
-2. Motorreductor DC (M-101) con cinemática acoplada a la velocidad de la faja.
-3. Sensor ultrasónico HC-SR04 (ZT-101) con cono de detección sonar volumétrico 3D.
+1. Faja transportadora modular CAD (GrabCAD / Gabriele Gregorini) con perfiles de
+   aluminio T-Slot 20x20 mm, rodillos con rodamientos 608ZZ, placas laterales y
+   banda móvil continua acelerada en GPU por OpenGL Display Lists.
+2. Motorreductor DC / NEMA 17 acoplado con cinemática sincronizada.
+3. Sensor ultrasónico HC-SR04 (ZT-101) con placa frontal ranurada GrabCAD e incidencia
+   perpendicular normal a 90° sobre la cara frontal de las cajas en aproximación.
 4. Gantry de inspección óptica con cámara industrial (QE-103) e iluminador LED (QL-103)
    cuyo foco dinámico responde en tiempo real al lazo fotométrico (Lazo 3).
-5. Servocontrol de enrutamiento SG90 (XV-102) con compuerta deflectora móvil (45°, 90°, 135°).
-6. Tres tolvas de clasificación por gravedad (Retrabajo, Conforme, Rechazo) con gavetas.
-7. Pedestal de mando con baliza luminosa de 3 estados y seta de Parada de Emergencia.
-8. Cajas dinámicas físicas que recorren la faja, son sensadas, inspeccionadas y desviadas.
-9. Cámara orbital 3D interactiva (rotación, traslación, zoom y 5 vistas preestablecidas).
-10. Panel HUD 2D superpuesto con telemetría en tiempo real y botones interactivos.
+5. Lanzadera / Carro móvil transversal M-102 indexador con 3 contenedores industriales
+   segregados (Retrabajo 45°, Conforme 90°, Rechazo 135°).
+6. Cajas dinámicas físicas que entran por tolva de gravedad, avanzan, son inspeccionadas,
+   sensadas por ultrasonido y caen por la rampa libre hacia el carro móvil.
+7. Cámara orbital 3D interactiva (rotación, traslación, zoom y 5 presets técnicos).
+8. Consola retro industrial unificada HUD 2D (fósforo verde, matriz LED OEE y mandos).
 =====================================================================================
 """
 
@@ -51,10 +54,10 @@ class Camera3D:
     """Cámara orbital técnica tipo CAD / Digital Twin."""
     def __init__(self):
         # Coordenadas esféricas
-        self.target = [0.05, 0.38, 0.0]  # Punto focal [x, y, z]
+        self.target = [0.08, 0.38, 0.0]  # Punto focal [x, y, z]
         self.distance = 1.65             # Distancia al objetivo (m)
-        self.yaw = 45.0                  # Ángulo azimutal (grados)
-        self.pitch = 28.0                # Ángulo de elevación (grados)
+        self.yaw = 42.0                  # Ángulo azimutal (grados)
+        self.pitch = 26.0                # Ángulo de elevación (grados)
         
         # Interpolación suave hacia objetivos
         self.target_goal = list(self.target)
@@ -70,15 +73,15 @@ class Camera3D:
     def set_preset(self, index: int):
         """Preajustes de vista estándar de ingeniería."""
         if index == 1:   # Isométrica General
-            self.set_goals([0.05, 0.38, 0.0], 1.65, 45.0, 28.0)
-        elif index == 2: # Entrada y Sensor Ultrasónico
-            self.set_goals([0.22, 0.42, 0.0], 0.90, 20.0, 22.0)
-        elif index == 3: # Estación de Cámara e Iluminación
-            self.set_goals([0.28, 0.46, 0.0], 0.75, 85.0, 32.0)
+            self.set_goals([0.08, 0.38, 0.0], 1.65, 42.0, 26.0)
+        elif index == 2: # Sensor Ultrasónico GrabCAD
+            self.set_goals([0.42, 0.40, 0.0], 0.70, 160.0, 20.0)
+        elif index == 3: # Estación de Cámara e Iluminación LED
+            self.set_goals([0.05, 0.44, 0.0], 0.65, 75.0, 30.0)
         elif index == 4: # Carro Móvil Indexador M-102 y Contenedores
-            self.set_goals([0.60, 0.25, 0.0], 0.95, 125.0, 28.0)
-        elif index == 5: # Tolva de Alimentación
-            self.set_goals([-0.45, 0.50, 0.0], 0.85, 315.0, 32.0)
+            self.set_goals([0.55, 0.25, 0.0], 0.90, 130.0, 28.0)
+        elif index == 5: # Tolva de Entrada
+            self.set_goals([-0.42, 0.48, 0.0], 0.85, 320.0, 30.0)
 
     def set_goals(self, target, dist, yaw, pitch):
         self.target_goal = list(target)
@@ -123,13 +126,10 @@ class Camera3D:
                 self.yaw_goal = (self.yaw_goal + dx * 0.4) % 360.0
                 self.pitch_goal = max(5.0, min(85.0, self.pitch_goal - dy * 0.4))
             elif self.is_panning:
-                # Trasladar en el plano horizontal respecto al ángulo actual
                 rad_yaw = math.radians(self.yaw)
                 speed = 0.0015 * self.distance
-                # Vector derecho
                 rx = -math.sin(rad_yaw) * dx * speed
                 rz = math.cos(rad_yaw) * dx * speed
-                # Vector adelante/arriba
                 self.target_goal[0] += rx
                 self.target_goal[2] += rz
                 self.target_goal[1] += dy * speed
@@ -158,7 +158,6 @@ class Primitive3D:
     
     @staticmethod
     def draw_box(x, y, z, dx, dy, dz, color, alpha=1.0):
-        """Dibuja un paralelepípedo centrado en (x, y, z) con dimensiones (dx, dy, dz)."""
         glColor4f(color[0], color[1], color[2], alpha)
         hx, hy, hz = dx * 0.5, dy * 0.5, dz * 0.5
         
@@ -203,7 +202,6 @@ class Primitive3D:
 
     @staticmethod
     def draw_cylinder(x, y, z, radius, height, color, axis='y', segments=16):
-        """Dibuja un cilindro centrado con tapas."""
         glColor4f(color[0], color[1], color[2], 1.0)
         glPushMatrix()
         glTranslatef(x, y, z)
@@ -223,7 +221,6 @@ class Primitive3D:
             glVertex3f(nx * radius, hh, nz * radius)
         glEnd()
 
-        # Tapas
         for sign, normal in [(-hh, -1.0), (hh, 1.0)]:
             glBegin(GL_TRIANGLE_FAN)
             glNormal3f(0.0, normal, 0.0)
@@ -236,11 +233,10 @@ class Primitive3D:
 
     @staticmethod
     def draw_cone(x, y, z, r_base, height, color, alpha=0.3, segments=16):
-        """Dibuja un cono volumétrico translúcido con Z-buffer protegido para no ocultar piezas."""
-        glDisable(GL_LIGHTING) # Desactivar sombreado para no oscurecer con tonos grises
-        glDepthMask(GL_FALSE)  # No escribir en el Z-buffer para no hacer desaparecer la caja
+        glDisable(GL_LIGHTING)
+        glDepthMask(GL_FALSE)
         glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE) # Mezcla luminosa
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE)
         glColor4f(color[0], color[1], color[2], alpha)
         
         glPushMatrix()
@@ -249,46 +245,169 @@ class Primitive3D:
         glRotatef(-90, 0, 0, 1)
         
         glBegin(GL_TRIANGLE_FAN)
-        glVertex3f(0.0, 0.0, 0.0) # Vértice
+        glVertex3f(0.0, 0.0, 0.0)
         for i in range(segments + 1):
             angle = 2.0 * math.pi * i / segments
             glVertex3f(math.cos(angle) * r_base, height, math.sin(angle) * r_base)
         glEnd()
         glPopMatrix()
         glDisable(GL_BLEND)
-        glDepthMask(GL_TRUE)   # Restaurar escritura en Z-buffer
-        glEnable(GL_LIGHTING)  # Restaurar iluminación general
+        glDepthMask(GL_TRUE)
+        glEnable(GL_LIGHTING)
+
+
+# =====================================================================================
+# CARGADOR DE MODELOS OBJ OPTIMIZADO (GPU DISPLAY LISTS)
+# =====================================================================================
+class CADModelLoader:
+    """Carga y compila modelos CAD en VRAM para 120 FPS sin consumo de CPU."""
+    def __init__(self, obj_filename):
+        self.vertices = []
+        self.normals = []
+        self.materials = {}
+        self.faces = []
+        self.d_list = None
+
+        mtl_file = None
+        dir_path = os.path.dirname(obj_filename)
+
+        with open(obj_filename, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split()
+                if not parts:
+                    continue
+                if parts[0] == 'v':
+                    self.vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
+                elif parts[0] == 'vn':
+                    self.normals.append([float(parts[1]), float(parts[2]), float(parts[3])])
+                elif parts[0] == 'mtllib':
+                    mtl_file = os.path.join(dir_path, parts[1])
+                elif parts[0] == 'usemtl':
+                    self.current_mtl = parts[1]
+                elif parts[0] == 'f':
+                    face_verts = []
+                    for p in parts[1:]:
+                        vals = p.split('/')
+                        v_i = int(vals[0]) - 1
+                        vn_i = int(vals[2]) - 1 if len(vals) > 2 and vals[2] else None
+                        face_verts.append((v_i, vn_i))
+                    self.faces.append((getattr(self, 'current_mtl', 'default'), face_verts))
+
+        if mtl_file and os.path.exists(mtl_file):
+            self.load_mtl(mtl_file)
+
+    def load_mtl(self, mtl_path):
+        cur_mat = None
+        with open(mtl_path, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split()
+                if not parts:
+                    continue
+                if parts[0] == 'newmtl':
+                    cur_mat = parts[1]
+                    self.materials[cur_mat] = {
+                        'Kd': (0.8, 0.8, 0.8),
+                        'Ka': (0.2, 0.2, 0.2),
+                        'Ks': (0.5, 0.5, 0.5),
+                        'Ns': 32.0
+                    }
+                elif parts[0] == 'Kd' and cur_mat:
+                    self.materials[cur_mat]['Kd'] = (float(parts[1]), float(parts[2]), float(parts[3]))
+                elif parts[0] == 'Ka' and cur_mat:
+                    self.materials[cur_mat]['Ka'] = (float(parts[1]), float(parts[2]), float(parts[3]))
+                elif parts[0] == 'Ks' and cur_mat:
+                    self.materials[cur_mat]['Ks'] = (float(parts[1]), float(parts[2]), float(parts[3]))
+                elif parts[0] == 'Ns' and cur_mat:
+                    self.materials[cur_mat]['Ns'] = float(parts[1])
+
+    def compile(self):
+        """Compila las caras en una Display List de hardware en la GPU."""
+        self.d_list = glGenLists(1)
+        glNewList(self.d_list, GL_COMPILE)
+
+        mat_faces = {}
+        for mat_name, face in self.faces:
+            if mat_name not in mat_faces:
+                mat_faces[mat_name] = []
+            mat_faces[mat_name].append(face)
+
+        for mat_name, faces in mat_faces.items():
+            mat_props = self.materials.get(mat_name, None)
+            if mat_props:
+                kd = mat_props['Kd']
+                ks = mat_props['Ks']
+                ka = mat_props['Ka']
+                ns = mat_props['Ns']
+                glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, [kd[0], kd[1], kd[2], 1.0])
+                glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, [ka[0], ka[1], ka[2], 1.0])
+                glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, [ks[0], ks[1], ks[2], 1.0])
+                glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, ns)
+                glColor3f(kd[0], kd[1], kd[2])
+            else:
+                glColor3f(0.8, 0.8, 0.8)
+
+            triangles = [f for f in faces if len(f) == 3]
+            if triangles:
+                glBegin(GL_TRIANGLES)
+                for f in triangles:
+                    for v_i, vn_i in f:
+                        if vn_i is not None and vn_i < len(self.normals):
+                            glNormal3fv(self.normals[vn_i])
+                        glVertex3fv(self.vertices[v_i])
+                glEnd()
+
+            quads = [f for f in faces if len(f) == 4]
+            if quads:
+                glBegin(GL_QUADS)
+                for f in quads:
+                    for v_i, vn_i in f:
+                        if vn_i is not None and vn_i < len(self.normals):
+                            glNormal3fv(self.normals[vn_i])
+                        glVertex3fv(self.vertices[v_i])
+                glEnd()
+
+        glEndList()
+
+    def draw(self):
+        if self.d_list is not None:
+            glCallList(self.d_list)
 
 
 # =====================================================================================
 # CLASE CAJA (OBJETO FÍSICO DINÁMICO)
 # =====================================================================================
 class DynamicBox:
-    """Representa una pieza de producto que viaja a lo largo de la estación."""
+    """Pieza de producto que viaja a lo largo de la estación desde tolva a carro."""
     def __init__(self, quality: str = "CONFORME"):
         self.quality = quality           # "CONFORME", "RETRABAJO", "RECHAZO"
-        self.pos_x = -0.46               # Posición longitudinal bajo la tolva de alimentación
-        self.pos_y = 0.50                # Inicia en caída por gravedad desde la tolva
-        self.pos_z = 0.0                 # Posición transversal
-        self.size = (0.07, 0.05, 0.07)   # Dimensiones físicas (L, H, W) en metros
+        self.pos_x = -0.42               # Posición bajo la boca de la tolva
+        self.pos_y = 0.54                # Inicia en caída libre por gravedad
+        self.pos_z = 0.0                 # Posición transversal centrada
+        self.size = (0.055, 0.045, 0.055)# Cajas cúbicas normalizadas para la banda útil de 80 mm
         
-        # Estados: "CAYENDO_DE_TOLVA", "EN_FAJA", "EN_DESVIO", "EN_TOLVA", "FINALIZADA"
+        # Estados: "CAYENDO_DE_TOLVA", "EN_FAJA", "EN_DESVIO", "FINALIZADA"
         self.state = "CAYENDO_DE_TOLVA"
-        self.target_chute = 2            # 1: Reproceso, 2: Conforme, 3: Rechazo
-        self.container_offset_z = 0.0    # Offset local dentro del carro móvil indexador
-        self.rotation_y = 0.0            # Rotación yaw
-        self.rotation_z = 0.0            # Inclinación en rampa
+        self.target_chute = 2            # 1: Retrabajo, 2: Conforme, 3: Rechazo
+        self.container_offset_z = 0.0    # Offset local dentro del carro indexador
+        self.rotation_y = 0.0
+        self.rotation_z = 0.0
         self.settle_timer = 0.0
 
         if self.quality == "RETRABAJO":
             self.target_chute = 1
-            self.container_offset_z = -0.16 # Contenedor Ámbar montado a -0.16m en el carro
+            self.container_offset_z = -0.16 # Contenedor Ámbar en Z = -0.16
         elif self.quality == "RECHAZO":
             self.target_chute = 3
-            self.container_offset_z = 0.16  # Contenedor Rojo montado a +0.16m en el carro
+            self.container_offset_z = 0.16  # Contenedor Rojo en Z = +0.16
         else:
             self.target_chute = 2
-            self.container_offset_z = 0.0   # Contenedor Verde en el centro del carro
+            self.container_offset_z = 0.0   # Contenedor Verde en el centro Z = 0.0
 
         self._update_colors()
 
@@ -302,40 +421,40 @@ class DynamicBox:
 
     def update(self, dt: float, belt_speed: float, cart_z: float = 0.0):
         if self.state == "CAYENDO_DE_TOLVA":
-            # Caída libre por gravedad desde la tolva de alimentación hacia la faja
             self.pos_y -= 0.65 * dt
             if self.pos_y <= 0.425:
                 self.pos_y = 0.425
                 self.state = "EN_FAJA"
 
         elif self.state == "EN_FAJA":
-            # Avanzar sobre la faja hacia adelante
+            # Avanzar sobre la banda hacia +X
             self.pos_x += belt_speed * dt
             self.pos_y = 0.425
             self.pos_z = 0.0
             self.rotation_y = 0.0
             self.rotation_z = 0.0
 
-            # Al llegar a la cabeza de la faja (X >= 0.49)
-            if self.pos_x >= 0.49:
-                self.state = "EN_TOLVA"
+            # Al llegar al final de la banda util antes del sensor (X >= 0.41)
+            if self.pos_x >= 0.41:
+                self.state = "EN_DESVIO"
 
-        elif self.state in ("EN_DESVIO", "EN_TOLVA"):
-            # Deslizamiento por el labio de descarga directo al contenedor que está alineado a Z = 0
-            self.pos_x += 0.40 * dt
-            self.pos_y -= 0.65 * dt
-            self.rotation_z = 20.0
-            self.pos_z = 0.0 # Cae en el contenedor alineado
+        elif self.state == "EN_DESVIO":
+            # Descenso suave y continuo por la rampa inclinada (-52 grados)
+            # Desde X = 0.41, Y = 0.425 hasta X = 0.58, Y = 0.18
+            self.pos_x += 0.28 * dt
+            self.pos_y -= 0.38 * dt
+            self.rotation_z = -52.0 # Inclinacion alineada con la rampa fisica
+            self.pos_z = 0.0
 
             if self.pos_y <= 0.18:
                 self.pos_y = 0.18
-                self.pos_x = 0.62
+                self.pos_x = 0.58
                 self.rotation_z = 0.0
                 self.state = "FINALIZADA"
 
         elif self.state == "FINALIZADA":
-            # Reposa dentro del contenedor y se mueve de forma solidaria con el carro móvil
-            self.pos_x = 0.62
+            # Reposa dentro del contenedor y se indexa solidariamente con el carro móvil
+            self.pos_x = 0.58
             self.pos_y = 0.18
             self.pos_z = cart_z + self.container_offset_z
             self.rotation_y = 0.0
@@ -348,395 +467,336 @@ class DynamicBox:
         glRotatef(self.rotation_y, 0, 1, 0)
         glRotatef(self.rotation_z, 0, 0, 1)
         
-        # Cuerpo principal de la caja (Cartón con tinte de calidad)
+        # Caja de cartón con tinte técnico
         Primitive3D.draw_box(0, 0, 0, self.size[0], self.size[1], self.size[2], self.color)
         
-        # Etiqueta blanca de código de barras superior
-        Primitive3D.draw_box(0, self.size[1]*0.5 + 0.001, 0, 0.035, 0.001, 0.035, (0.95, 0.95, 0.95))
+        # Etiqueta de código de barras superior
+        Primitive3D.draw_box(0, self.size[1]*0.5 + 0.001, 0, 0.030, 0.001, 0.030, (0.95, 0.95, 0.95))
         # Cinta adhesiva central
-        Primitive3D.draw_box(0, self.size[1]*0.5 + 0.0015, 0, self.size[0]*0.9, 0.001, 0.012, (0.75, 0.60, 0.40))
+        Primitive3D.draw_box(0, self.size[1]*0.5 + 0.0015, 0, self.size[0]*0.9, 0.001, 0.010, (0.75, 0.60, 0.40))
         glPopMatrix()
 
 
 # =====================================================================================
-# MODELO 3D DE LA ESTACIÓN LOGÍSTICA
+# MODELO 3D DE LA ESTACIÓN LOGÍSTICA (GRABCAD ASSEMBLY INTEGRATED)
 # =====================================================================================
 class LogisticsStationModel:
     """Construcción geométrica CAD de la estación logística industrial."""
     def __init__(self):
         self.belt_offset_x = 0.0
+        self.roller_angle = 0.0
         self.emergency_pressed = False
         
-        # Paleta de colores industriales (Clean CAD Engineering)
+        # Paleta de colores industriales
         self.C_ALU = (0.78, 0.80, 0.83)        # Perfil de aluminio anodizado
-        self.C_ALU_DARK = (0.45, 0.48, 0.52)   # Ranuras de perfiles
-        self.C_BELT = (0.15, 0.16, 0.18)       # Banda de caucho negro
         self.C_BELT_RIB = (0.28, 0.30, 0.32)   # Nervaduras de tracción
         self.C_MOTOR = (0.12, 0.45, 0.72)      # Azul motor eléctrico
-        self.C_SERVO = (0.10, 0.40, 0.85)      # Azul translúcido SG90
-        self.C_BLADE = (0.90, 0.90, 0.92)      # Hoja de compuerta de acero
-        self.C_CHUTE_CONF = (0.25, 0.65, 0.30) # Tolva Conforme
-        self.C_CHUTE_RETR = (0.85, 0.70, 0.15) # Tolva Retrabajo
-        self.C_CHUTE_RECH = (0.80, 0.22, 0.20) # Tolva Rechazo
-        self.C_SENSOR = (0.18, 0.28, 0.58)     # PCB HC-SR04
-        self.C_CAN = (0.85, 0.88, 0.92)        # Cápsulas ultrasónicas
         self.C_STAND = (0.25, 0.28, 0.32)      # Pedestal operador
 
+        # Cargar y compilar el ensamble CAD de la faja modular GrabCAD
+        modelsd_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelsd")
+        obj_file = os.path.join(modelsd_dir, "faja_modular_estacion_3d.obj")
+        self.cad_loader = None
+        if os.path.exists(obj_file):
+            try:
+                self.cad_loader = CADModelLoader(obj_file)
+                self.cad_loader.compile()
+            except Exception as e:
+                print(f"[AVISO CAD] No se pudo compilar Display List: {e}")
+
     def draw_floor(self):
-        """Dibuja el suelo técnico y la cuadrícula métrica de referencia."""
-        # Suelo base
-        Primitive3D.draw_box(0.0, -0.01, 0.0, 3.0, 0.02, 2.5, (0.90, 0.92, 0.94))
+        """Suelo técnico de taller y cuadrícula métrica ampliada."""
+        # Suelo base ampliado que cubre todo el campo visual
+        Primitive3D.draw_box(0.0, -0.01, 0.0, 7.0, 0.02, 6.0, (0.90, 0.92, 0.94))
         
-        # Cuadrícula métrica
         glDisable(GL_LIGHTING)
         glColor3f(0.80, 0.82, 0.85)
         glLineWidth(1.0)
         glBegin(GL_LINES)
-        for i in range(-15, 16):
-            # Líneas en Z
-            glVertex3f(i * 0.1, 0.001, -1.2)
-            glVertex3f(i * 0.1, 0.001, 1.2)
-            # Líneas en X
-            glVertex3f(-1.5, 0.001, i * 0.1)
-            glVertex3f(1.5, 0.001, i * 0.1)
+        for i in range(-30, 31):
+            glVertex3f(i * 0.1, 0.001, -2.5)
+            glVertex3f(i * 0.1, 0.001, 2.5)
+            glVertex3f(-2.5, 0.001, i * 0.1)
+            glVertex3f(2.5, 0.001, i * 0.1)
         glEnd()
 
-        # Marcas de seguridad amarillas en el suelo alrededor de la estación
+        # Perímetro de seguridad amarillo
         glColor3f(0.92, 0.78, 0.15)
         glLineWidth(3.0)
         glBegin(GL_LINE_LOOP)
-        glVertex3f(-0.70, 0.002, -0.45)
-        glVertex3f(0.80, 0.002, -0.45)
-        glVertex3f(0.80, 0.002, 0.45)
-        glVertex3f(-0.70, 0.002, 0.45)
+        glVertex3f(-0.70, 0.002, -0.50)
+        glVertex3f(0.80, 0.002, -0.50)
+        glVertex3f(0.80, 0.002, 0.50)
+        glVertex3f(-0.70, 0.002, 0.50)
         glEnd()
         glEnable(GL_LIGHTING)
 
-    def draw_conveyor_frame(self, belt_speed: float, dt: float):
-        """Dibuja la estructura mecánica de la faja transportadora."""
-        # Avance continuo de la textura de la banda
-        self.belt_offset_x = (self.belt_offset_x + belt_speed * dt) % 0.04
+    def draw_conveyor(self, belt_speed: float, dt: float):
+        """Dibuja el ensamble maestro GrabCAD acoplado con nervaduras móviles y rodillos intermedios."""
+        # 1. Renderizar geometría CAD compilada en GPU (0% CPU)
+        if self.cad_loader:
+            self.cad_loader.draw()
 
-        # 4 Patas de aluminio estructural 40x40 (X = ±0.45, Z = ±0.09, Y = 0.20)
-        for px in (-0.45, 0.45):
-            for pz in (-0.09, 0.09):
-                # Pata vertical
-                Primitive3D.draw_box(px, 0.20, pz, 0.04, 0.40, 0.04, self.C_ALU)
-                # Base de nivelación negra en el suelo
-                Primitive3D.draw_box(px, 0.01, pz, 0.06, 0.02, 0.06, (0.1, 0.1, 0.1))
+        # 2. Rodillos intermedios de soporte superior y tensores de retorno
+        self.draw_intermediate_rollers(belt_speed, dt)
 
-        # Travesaños inferiores de refuerzo
-        Primitive3D.draw_box(0.0, 0.10, -0.09, 0.90, 0.03, 0.03, self.C_ALU)
-        Primitive3D.draw_box(0.0, 0.10, 0.09, 0.90, 0.03, 0.03, self.C_ALU)
-        Primitive3D.draw_box(-0.45, 0.10, 0.0, 0.03, 0.03, 0.18, self.C_ALU)
-        Primitive3D.draw_box(0.45, 0.10, 0.0, 0.03, 0.03, 0.18, self.C_ALU)
-
-        # Rieles longitudinales superiores portadores de la banda (Y = 0.38)
-        Primitive3D.draw_box(0.0, 0.38, -0.095, 1.02, 0.04, 0.03, self.C_ALU)
-        Primitive3D.draw_box(0.0, 0.38, 0.095, 1.02, 0.04, 0.03, self.C_ALU)
-
-        # Placa deslizante bajo la faja
-        Primitive3D.draw_box(0.0, 0.385, 0.0, 0.98, 0.015, 0.16, (0.35, 0.37, 0.40))
-
-        # Rodillo motor motriz (X = +0.50, Y = 0.385)
-        Primitive3D.draw_cylinder(0.50, 0.385, 0.0, 0.025, 0.18, (0.7, 0.72, 0.75), axis='z')
-        # Rodillo conducido tensor (X = -0.50, Y = 0.385)
-        Primitive3D.draw_cylinder(-0.50, 0.385, 0.0, 0.025, 0.18, (0.7, 0.72, 0.75), axis='z')
-
-        # Superficie de la banda de caucho negra superior (Y = 0.40)
-        Primitive3D.draw_box(0.0, 0.40, 0.0, 1.0, 0.005, 0.17, self.C_BELT)
-
-        # Nervaduras/marcas de tracción móviles
+        # 3. Nervaduras de la banda móvil en tiempo real
+        self.belt_offset_x = (self.belt_offset_x + belt_speed * dt) % 0.035
         glDisable(GL_LIGHTING)
         glColor3f(self.C_BELT_RIB[0], self.C_BELT_RIB[1], self.C_BELT_RIB[2])
         glLineWidth(2.0)
         glBegin(GL_LINES)
-        num_ribs = 25
+        num_ribs = 24
         for i in range(num_ribs):
-            rx = -0.48 + i * 0.04 + self.belt_offset_x
-            if -0.49 <= rx <= 0.49:
-                glVertex3f(rx, 0.403, -0.075)
-                glVertex3f(rx, 0.403, 0.075)
+            rx = -0.40 + i * 0.035 + self.belt_offset_x
+            if -0.40 <= rx <= 0.40:
+                glVertex3f(rx, 0.404, -0.036)
+                glVertex3f(rx, 0.404, 0.036)
         glEnd()
         glEnable(GL_LIGHTING)
 
-        # Rieles de guía laterales de acero inoxidable (evitan que las cajas caigan de costado)
-        Primitive3D.draw_box(-0.05, 0.425, -0.09, 0.90, 0.025, 0.008, (0.85, 0.88, 0.90))
-        # Riel derecho con abertura en la zona de desvío
-        Primitive3D.draw_box(-0.10, 0.425, 0.09, 0.75, 0.025, 0.008, (0.85, 0.88, 0.90))
+    def draw_intermediate_rollers(self, belt_speed: float, dt: float):
+        """Dibuja los rodillos intermedios de soporte de cama superior y tensores de retorno."""
+        self.roller_angle = (self.roller_angle + (belt_speed / 0.010) * (180.0 / math.pi) * dt) % 360.0
 
-        # Motorreductor DC (M-101) acoplado al rodillo delantero
-        Primitive3D.draw_cylinder(0.50, 0.385, -0.13, 0.035, 0.08, self.C_MOTOR, axis='z')
-        # Caja de engranajes y bornera
-        Primitive3D.draw_box(0.50, 0.385, -0.17, 0.05, 0.06, 0.04, (0.2, 0.2, 0.22))
-        # Cable flexible de alimentación hacia canaleta
-        Primitive3D.draw_cylinder(0.50, 0.30, -0.17, 0.006, 0.15, (0.1, 0.1, 0.1), axis='y')
+        c_tube = (0.76, 0.78, 0.82)     # Acero inoxidable rectificado
+        c_shaft = (0.92, 0.94, 0.96)    # Eje pasante brillante
+        c_collar = (0.35, 0.38, 0.42)   # Retenes / rodamientos
+        c_bracket = (0.22, 0.24, 0.28)  # Soporte T-Slot negro satinado
 
-    def draw_ultrasonic_sensor(self, measured_dist_cm: float):
-        """Sensor HC-SR04 (ZT-101) en pórtico mirando contra el flujo de entrada."""
-        # Soporte de aluminio en voladizo (X = 0.35, Z = 0.11)
-        Primitive3D.draw_box(0.35, 0.46, 0.095, 0.02, 0.12, 0.015, self.C_ALU)
-        
-        # Placa PCB azul del sensor mirando hacia -X
-        Primitive3D.draw_box(0.345, 0.45, 0.0, 0.008, 0.035, 0.08, self.C_SENSOR)
-        
-        # Dos cápsulas de aluminio (Transmisor TX y Receptor RX) apuntando hacia -X
-        Primitive3D.draw_cylinder(0.335, 0.45, -0.022, 0.010, 0.016, self.C_CAN, axis='x')
-        Primitive3D.draw_cylinder(0.335, 0.45, 0.022, 0.010, 0.016, self.C_CAN, axis='x')
+        # 1. Cinco rodillos de apoyo superior (cama de deslizamiento de la cinta)
+        # La cinta corre a Y = 0.404. El rodillo tiene radio r = 0.010 m (20 mm diámetro)
+        # por lo que su centro está en Y = 0.388 m, tocando la cara inferior de la banda.
+        top_y = 0.388
+        top_x_positions = [-0.27, -0.13, 0.00, 0.13, 0.27]
+        for rx in top_x_positions:
+            # Eje pasante de acero de 6 mm de diámetro
+            Primitive3D.draw_cylinder(rx, top_y, 0.0, 0.003, 0.114, c_shaft, axis='z', segments=12)
+            # Tubo cilíndrico rodillo de 20 mm de diámetro (80 mm de ancho de banda)
+            Primitive3D.draw_cylinder(rx, top_y, 0.0, 0.010, 0.076, c_tube, axis='z', segments=18)
+            # Rodamientos miniatura en extremos del rodillo
+            Primitive3D.draw_cylinder(rx, top_y, -0.040, 0.006, 0.004, c_collar, axis='z', segments=12)
+            Primitive3D.draw_cylinder(rx, top_y,  0.040, 0.006, 0.004, c_collar, axis='z', segments=12)
+            # Soportes de anclaje a las ranuras interiores del perfil T-Slot 2020
+            Primitive3D.draw_box(rx, top_y - 0.004, -0.048, 0.012, 0.012, 0.008, c_bracket)
+            Primitive3D.draw_box(rx, top_y - 0.004,  0.048, 0.012, 0.012, 0.008, c_bracket)
 
-        # Cono de detección ultrasónica translúcido azul
-        # La longitud del cono refleja la distancia medida actual
-        cone_len = max(0.05, min(0.40, measured_dist_cm * 0.01))
-        # Pulsación armónica sutil
-        pulse = 0.02 * math.sin(time.time() * 8.0)
-        Primitive3D.draw_cone(0.32, 0.45, 0.0, 0.045 + pulse, cone_len, (0.2, 0.7, 1.0), alpha=0.18)
+        # 2. Dos rodillos tensores inferiores para la cinta de retorno
+        # Evitan la comba del tramo inferior de la banda a Y = 0.362 m
+        ret_y = 0.362
+        ret_x_positions = [-0.20, 0.20]
+        for rx in ret_x_positions:
+            # Eje pasante
+            Primitive3D.draw_cylinder(rx, ret_y, 0.0, 0.003, 0.114, c_shaft, axis='z', segments=12)
+            # Rodillo de retorno de 16 mm de diámetro
+            Primitive3D.draw_cylinder(rx, ret_y, 0.0, 0.008, 0.076, (0.72, 0.74, 0.78), axis='z', segments=16)
+            # Bridas de sujeción al perfil
+            Primitive3D.draw_box(rx, ret_y + 0.006, -0.048, 0.010, 0.014, 0.008, c_bracket)
+            Primitive3D.draw_box(rx, ret_y + 0.006,  0.048, 0.010, 0.014, 0.008, c_bracket)
+
+    def draw_sonar_wave(self, measured_dist_cm: float):
+        """Cono volumétrico sonar del sensor HC-SR04 incidiendo a 90° contra el flujo (-X)."""
+        # Cápsulas del sensor en X = +0.47, apuntando hacia -X
+        cone_len = max(0.04, min(0.38, measured_dist_cm * 0.01))
+        pulse = 0.015 * math.sin(time.time() * 8.0)
+        Primitive3D.draw_cone(0.47, 0.428, 0.0, 0.040 + pulse, cone_len, (0.2, 0.7, 1.0), alpha=0.18)
 
     def draw_inspection_camera(self, led_pwm: int):
-        """Gantry de inspección óptica (QE-103) y foco LED regulado (QL-103 / Lazo 3)."""
-        gx = 0.24  # Posición longitudinal del pórtico
+        """Gantry de inspección óptica (QE-103) y foco LED (QL-103 / Lazo 3) en X = +0.355 m."""
+        gx = 0.355  # Alineado exactamente con la posición de frenado e inspección (d = 8.7 cm)
         
-        # Columnas del pórtico sobre la faja
-        Primitive3D.draw_box(gx, 0.54, -0.11, 0.025, 0.28, 0.025, self.C_ALU)
-        Primitive3D.draw_box(gx, 0.54, 0.11, 0.025, 0.28, 0.025, self.C_ALU)
+        # Columnas del pórtico sobre el perfil
+        Primitive3D.draw_box(gx, 0.54, -0.085, 0.020, 0.28, 0.020, self.C_ALU)
+        Primitive3D.draw_box(gx, 0.54, 0.085, 0.020, 0.28, 0.020, self.C_ALU)
         # Travesaño superior
-        Primitive3D.draw_box(gx, 0.67, 0.0, 0.03, 0.03, 0.24, self.C_ALU)
+        Primitive3D.draw_box(gx, 0.67, 0.0, 0.025, 0.025, 0.19, self.C_ALU)
 
-        # Cámara industrial compacta (Cuerpo negro)
-        Primitive3D.draw_box(gx, 0.61, 0.0, 0.04, 0.06, 0.04, (0.15, 0.16, 0.18))
-        # Lente óptico apuntando hacia abajo
-        Primitive3D.draw_cylinder(gx, 0.56, 0.0, 0.014, 0.03, (0.05, 0.05, 0.05), axis='y')
+        # Cámara industrial compacta
+        Primitive3D.draw_box(gx, 0.61, 0.0, 0.035, 0.055, 0.035, (0.15, 0.16, 0.18))
+        Primitive3D.draw_cylinder(gx, 0.56, 0.0, 0.012, 0.025, (0.05, 0.05, 0.05), axis='y')
+        Primitive3D.draw_cylinder(gx, 0.55, 0.0, 0.022, 0.008, (0.85, 0.85, 0.88), axis='y')
 
-        # Anillo de iluminación LED coaxial (QL-103)
-        Primitive3D.draw_cylinder(gx, 0.55, 0.0, 0.024, 0.008, (0.85, 0.85, 0.88), axis='y')
-
-        # Brillo dinámico del foco LED proporcional al PWM del Lazo 3 (0..255)
+        # Iluminador LED dinámico
         led_intensity = max(0.05, min(1.0, led_pwm / 255.0))
         glow_color = (0.95 * led_intensity, 0.95 * led_intensity, 0.80 * led_intensity)
         
-        # Actualizar luz puntual GL_LIGHT2 en tiempo real
         light_pos = [gx, 0.55, 0.0, 1.0]
         light_diff = [glow_color[0], glow_color[1], glow_color[2], 1.0]
         glLightfv(GL_LIGHT2, GL_POSITION, light_pos)
         glLightfv(GL_LIGHT2, GL_DIFFUSE, light_diff)
         glLightfv(GL_LIGHT2, GL_SPECULAR, light_diff)
 
-        # Cono de luz translúcido visible proyectado hacia la faja (luz pura sin gris)
-        glDisable(GL_LIGHTING) # CRUCIAL: Desactivar iluminación general para no teñir el haz de gris
-        glDepthMask(GL_FALSE)  # No escribir en Z-buffer para que la caja bajo la cámara no desaparezca
+        # Cono de luz pura translúcido proyectado sobre la faja
+        glDisable(GL_LIGHTING)
+        glDepthMask(GL_FALSE)
         glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE) # Luz aditiva pura brillante
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE)
         
         if led_intensity > 0.01:
             glPushMatrix()
             glTranslatef(gx, 0.55, 0.0)
             glBegin(GL_TRIANGLE_FAN)
-            # Vértice cálido transparente en el LED
             glColor4f(1.0, 0.98, 0.88, 0.08 + 0.24 * led_intensity)
             glVertex3f(0.0, 0.0, 0.0)
-            # Base desvanecida a transparente puro (cero bordes grises)
             glColor4f(1.0, 0.95, 0.80, 0.01 + 0.03 * led_intensity)
             for i in range(21):
                 ang = 2.0 * math.pi * i / 20.0
-                glVertex3f(math.cos(ang) * 0.095, -0.16, math.sin(ang) * 0.095)
+                glVertex3f(math.cos(ang) * 0.09, -0.15, math.sin(ang) * 0.09)
             glEnd()
             glPopMatrix()
 
-            # Mancha suave de luz cálida sobre la faja
+            # Mancha suave sobre la banda
             glPushMatrix()
-            glTranslatef(gx, 0.402, 0.0)
+            glTranslatef(gx, 0.404, 0.0)
             glBegin(GL_TRIANGLE_FAN)
             glColor4f(1.0, 0.98, 0.85, 0.06 + 0.16 * led_intensity)
             glVertex3f(0.0, 0.0, 0.0)
             glColor4f(1.0, 0.95, 0.80, 0.0)
             for i in range(17):
                 ang = 2.0 * math.pi * i / 16.0
-                glVertex3f(math.cos(ang) * 0.09, 0.0, math.sin(ang) * 0.09)
+                glVertex3f(math.cos(ang) * 0.08, 0.0, math.sin(ang) * 0.08)
             glEnd()
             glPopMatrix()
 
         glDisable(GL_BLEND)
-        glDepthMask(GL_TRUE)   # Restaurar escritura en Z-buffer
-        glEnable(GL_LIGHTING)  # Restaurar iluminación general para los objetos opacos
+        glDepthMask(GL_TRUE)
+        glEnable(GL_LIGHTING)
 
-        # Sensor LDR montado lateralmente para medir el balance fotométrico
-        Primitive3D.draw_box(gx, 0.43, -0.08, 0.015, 0.015, 0.015, (0.4, 0.2, 0.1))
+        # Sensor LDR lateral
+        Primitive3D.draw_box(gx, 0.425, -0.055, 0.012, 0.012, 0.012, (0.4, 0.2, 0.1))
 
-    # =========================================================================
-    # TOLVA / CONTENEDOR DE ALIMENTACIÓN EN LA ENTRADA DE LA FAJA (FEED HOPPER)
-    # =========================================================================
-    def draw_feed_hopper(self):
-        """Contenedor/tolva superior desde donde caen las cajas por gravedad a la faja."""
-        hx = -0.46
-        hy = 0.62
-
-        # Postes verticales de soporte Bosch Rexroth anclados a la estructura
-        Primitive3D.draw_box(hx, 0.54, -0.095, 0.025, 0.28, 0.025, self.C_ALU)
-        Primitive3D.draw_box(hx, 0.54, 0.095, 0.025, 0.28, 0.025, self.C_ALU)
-        # Travesaño superior
-        Primitive3D.draw_box(hx, 0.70, 0.0, 0.03, 0.025, 0.22, self.C_ALU)
-
-        # Embudo / Tolva contenedor de almacenamiento (Acero azulado)
-        Primitive3D.draw_box(hx, hy, -0.075, 0.14, 0.16, 0.008, (0.35, 0.45, 0.58))
-        Primitive3D.draw_box(hx, hy, 0.075, 0.14, 0.16, 0.008, (0.35, 0.45, 0.58))
-        Primitive3D.draw_box(hx - 0.065, hy, 0.0, 0.008, 0.16, 0.14, (0.30, 0.40, 0.52))
-        Primitive3D.draw_box(hx + 0.065, hy, 0.0, 0.008, 0.16, 0.14, (0.30, 0.40, 0.52))
-
-        # Boca de descarga inferior acampanada
-        Primitive3D.draw_box(hx, 0.52, 0.0, 0.11, 0.02, 0.12, (0.85, 0.88, 0.90))
-
-        # Cajas apiladas de reserva dentro de la tolva (listas para caer)
-        Primitive3D.draw_box(hx, 0.57, 0.0, 0.07, 0.05, 0.07, (0.75, 0.65, 0.45))
-        Primitive3D.draw_box(hx, 0.63, 0.0, 0.07, 0.05, 0.07, (0.75, 0.65, 0.45))
-
-    def draw_discharge_lip(self):
-        """Labio inclinado de acero inoxidable de descarga directa hacia el carro móvil."""
+    def draw_discharge_chute(self):
+        """Rampa continua de chapa plegada que desciende de la banda hacia el carro móvil indexador."""
+        # Inicio en X = 0.41, Y = 0.404 (boca del rodillo motriz)
+        # Final en X = 0.58, Y = 0.180 (boca de entrada de las gavetas en el carro)
+        # Centro geométrico de la rampa: X = 0.495, Y = 0.292, Z = 0.0
+        # Inclinación: -52.0° hacia abajo hacia el eje +X
         glPushMatrix()
-        glTranslatef(0.53, 0.36, 0.0)
-        glRotatef(-28.0, 0, 0, 1)
+        glTranslatef(0.495, 0.292, 0.0)
+        glRotatef(-52.0, 0, 0, 1)
 
-        # Chapa deslizante
-        Primitive3D.draw_box(0.0, 0.0, 0.0, 0.12, 0.006, 0.16, (0.85, 0.88, 0.90))
-        # Pestañas laterales de contención
-        Primitive3D.draw_box(0.0, 0.02, -0.082, 0.12, 0.035, 0.006, (0.80, 0.82, 0.85))
-        Primitive3D.draw_box(0.0, 0.02, 0.082, 0.12, 0.035, 0.006, (0.80, 0.82, 0.85))
+        # Chapa principal de deslizamiento (ancho 90 mm, largo 280 mm)
+        Primitive3D.draw_box(0.0, 0.0, 0.0, 0.28, 0.005, 0.090, (0.75, 0.78, 0.82))
+        # Labios laterales de contención para encauzar las cajas
+        Primitive3D.draw_box(0.0, 0.015, -0.046, 0.28, 0.030, 0.004, (0.70, 0.74, 0.78))
+        Primitive3D.draw_box(0.0, 0.015,  0.046, 0.28, 0.030, 0.004, (0.70, 0.74, 0.78))
         glPopMatrix()
 
-        # Soportes estructurales anclados al chasis frontal
-        Primitive3D.draw_box(0.50, 0.30, -0.085, 0.015, 0.14, 0.015, (0.70, 0.72, 0.75))
-        Primitive3D.draw_box(0.50, 0.30, 0.085, 0.015, 0.14, 0.015, (0.70, 0.72, 0.75))
+        # Brazos estructurales de soporte anclados al chasis inferior
+        Primitive3D.draw_box(0.50, 0.14, -0.046, 0.012, 0.26, 0.012, (0.35, 0.38, 0.42))
+        Primitive3D.draw_box(0.50, 0.14,  0.046, 0.012, 0.26, 0.012, (0.35, 0.38, 0.42))
+        # Travesaño de unión
+        Primitive3D.draw_box(0.50, 0.16,  0.0,    0.014, 0.012, 0.104, (0.35, 0.38, 0.42))
+
+    def draw_feed_hopper(self):
+        """Tolva de alimentación superior en la entrada (X = -0.42 m)."""
+        hx = -0.42
+        hy = 0.65
+
+        # Columnas de soporte
+        Primitive3D.draw_box(hx, 0.55, -0.075, 0.020, 0.26, 0.020, self.C_ALU)
+        Primitive3D.draw_box(hx, 0.55, 0.075, 0.020, 0.26, 0.020, self.C_ALU)
+        Primitive3D.draw_box(hx, 0.70, 0.0, 0.025, 0.020, 0.17, self.C_ALU)
+
+        # Embudo de chapa
+        Primitive3D.draw_box(hx, hy, -0.065, 0.12, 0.14, 0.006, (0.35, 0.45, 0.58))
+        Primitive3D.draw_box(hx, hy, 0.065, 0.12, 0.14, 0.006, (0.35, 0.45, 0.58))
+        Primitive3D.draw_box(hx - 0.055, hy, 0.0, 0.006, 0.14, 0.12, (0.30, 0.40, 0.52))
+        Primitive3D.draw_box(hx + 0.055, hy, 0.0, 0.006, 0.14, 0.12, (0.30, 0.40, 0.52))
+
+        # Boca de salida
+        Primitive3D.draw_box(hx, 0.57, 0.0, 0.09, 0.015, 0.10, (0.85, 0.88, 0.90))
+
+        # Cajas apiladas dentro de la tolva
+        Primitive3D.draw_box(hx, 0.60, 0.0, 0.055, 0.045, 0.055, (0.75, 0.65, 0.45))
+        Primitive3D.draw_box(hx, 0.65, 0.0, 0.055, 0.045, 0.055, (0.75, 0.65, 0.45))
 
     def draw_motorized_container_shuttle(self, cart_z: float):
-        """
-        Lanzadera / Carro móvil transversal indexador accionado por motor M-102.
-        Soporta los 3 contenedores industriales segregados:
-        - Ámbar (-0.16 m en carro): Retrabajo
-        - Verde ( 0.00 m en carro): Conforme
-        - Rojo  (+0.16 m en carro): Rechazo
-        """
-        # 1. Bancada y Guías Lineales Fijas (Eje Z transversal, X = 0.62)
-        # Viga soporte base perfil Rexroth
-        Primitive3D.draw_box(0.62, 0.02, 0.0, 0.10, 0.04, 0.94, self.C_ALU)
-        # Ranura central
-        Primitive3D.draw_box(0.62, 0.041, 0.0, 0.015, 0.004, 0.92, (0.40, 0.42, 0.45))
+        """Lanzadera transversal indexadora M-102 en X = +0.58 m con 3 gavetas."""
+        cx = 0.58
+        # Bancada y guías en Z
+        Primitive3D.draw_box(cx, 0.02, 0.0, 0.10, 0.04, 0.94, self.C_ALU)
+        Primitive3D.draw_box(cx, 0.041, 0.0, 0.015, 0.004, 0.92, (0.40, 0.42, 0.45))
+        Primitive3D.draw_cylinder(cx - 0.035, 0.055, 0.0, 0.006, 0.92, (0.90, 0.92, 0.94), axis='z')
+        Primitive3D.draw_cylinder(cx + 0.035, 0.055, 0.0, 0.006, 0.92, (0.90, 0.92, 0.94), axis='z')
 
-        # Doble eje guía rectificado
-        Primitive3D.draw_cylinder(0.585, 0.055, 0.0, 0.006, 0.92, (0.90, 0.92, 0.94), axis='z')
-        Primitive3D.draw_cylinder(0.655, 0.055, 0.0, 0.006, 0.92, (0.90, 0.92, 0.94), axis='z')
+        # Soportes extremos
+        Primitive3D.draw_box(cx, 0.05, -0.46, 0.11, 0.06, 0.03, (0.35, 0.38, 0.42))
+        Primitive3D.draw_box(cx, 0.05, 0.46, 0.11, 0.06, 0.03, (0.35, 0.38, 0.42))
 
-        # Soportes de extremos de eje (Pillow blocks)
-        Primitive3D.draw_box(0.62, 0.05, -0.46, 0.11, 0.06, 0.03, (0.35, 0.38, 0.42))
-        Primitive3D.draw_box(0.62, 0.05, 0.46, 0.11, 0.06, 0.03, (0.35, 0.38, 0.42))
+        # Motor de indexación
+        Primitive3D.draw_box(cx, 0.065, -0.50, 0.050, 0.050, 0.055, (0.22, 0.24, 0.26))
+        Primitive3D.draw_box(cx, 0.065, -0.535, 0.040, 0.040, 0.020, self.C_MOTOR)
 
-        # Correa dentada síncrona / Husillo de transmisión
-        Primitive3D.draw_box(0.62, 0.055, 0.0, 0.012, 0.006, 0.90, (0.15, 0.15, 0.16))
-
-        # 2. Servomotor / Motor Paso a Paso de Indexación M-102 (NEMA 17 / Blue Housing)
-        # Cuerpo motor en extremo -Z (-0.50m)
-        Primitive3D.draw_box(0.62, 0.065, -0.50, 0.055, 0.055, 0.06, (0.22, 0.24, 0.26))
-        # Carcasa azul del encoder / reductor
-        Primitive3D.draw_box(0.62, 0.065, -0.54, 0.045, 0.045, 0.025, self.C_MOTOR)
-        # Polea de tracción
-        Primitive3D.draw_cylinder(0.62, 0.055, -0.465, 0.012, 0.015, (0.85, 0.88, 0.90), axis='y')
-
-        # 3. Carro Móvil Deslizante (Plataforma Portacontenedores a Z = cart_z)
+        # Plataforma móvil portacontenedores
         car_y = 0.08
-        # Placa base de aluminio
-        Primitive3D.draw_box(0.62, car_y, cart_z, 0.18, 0.016, 0.50, self.C_ALU)
-
-        # 4 Casquillos / Bloques de rodamientos lineales bajo la placa
+        Primitive3D.draw_box(cx, car_y, cart_z, 0.16, 0.015, 0.50, self.C_ALU)
         for bz in (-0.18, 0.18):
-            Primitive3D.draw_box(0.585, 0.055, cart_z + bz, 0.028, 0.024, 0.045, (0.40, 0.43, 0.46))
-            Primitive3D.draw_box(0.655, 0.055, cart_z + bz, 0.028, 0.024, 0.045, (0.40, 0.43, 0.46))
-        # Tensor central de fijación a correa
-        Primitive3D.draw_box(0.62, 0.065, cart_z, 0.035, 0.015, 0.04, (0.85, 0.70, 0.15))
+            Primitive3D.draw_box(cx - 0.035, 0.055, cart_z + bz, 0.025, 0.022, 0.040, (0.40, 0.43, 0.46))
+            Primitive3D.draw_box(cx + 0.035, 0.055, cart_z + bz, 0.025, 0.022, 0.040, (0.40, 0.43, 0.46))
 
-        # 4. Tres Contenedores Industriales Montados sobre el Carro
-        bin_dx, bin_dy, bin_dz = 0.15, 0.13, 0.14
+        # Contenedores
+        bin_dx, bin_dy, bin_dz = 0.14, 0.12, 0.14
         bin_center_y = car_y + 0.008 + bin_dy * 0.5
 
-        # A. CONTENEDOR 1: RETRABAJO (Ámbar, Z = cart_z - 0.16)
+        # 1. RETRABAJO (Ámbar, Z = cart_z - 0.16)
         z1 = cart_z - 0.16
-        Primitive3D.draw_box(0.62, bin_center_y, z1, bin_dx, bin_dy, bin_dz, (0.92, 0.70, 0.15))
-        Primitive3D.draw_box(0.62, bin_center_y + bin_dy*0.5, z1, bin_dx + 0.012, 0.012, bin_dz + 0.012, (0.75, 0.55, 0.10))
-        Primitive3D.draw_box(0.62, bin_center_y + 0.015, z1, bin_dx - 0.02, bin_dy, bin_dz - 0.02, (0.22, 0.16, 0.06))
-        Primitive3D.draw_box(0.54, bin_center_y, z1, 0.002, 0.04, 0.08, (0.95, 0.95, 0.95))
+        Primitive3D.draw_box(cx, bin_center_y, z1, bin_dx, bin_dy, bin_dz, (0.92, 0.70, 0.15))
+        Primitive3D.draw_box(cx, bin_center_y + 0.012, z1, bin_dx - 0.02, bin_dy, bin_dz - 0.02, (0.22, 0.16, 0.06))
 
-        # B. CONTENEDOR 2: CONFORME (Verde, Z = cart_z)
+        # 2. CONFORME (Verde, Z = cart_z)
         z2 = cart_z
-        Primitive3D.draw_box(0.62, bin_center_y, z2, bin_dx, bin_dy, bin_dz, (0.25, 0.65, 0.30))
-        Primitive3D.draw_box(0.62, bin_center_y + bin_dy*0.5, z2, bin_dx + 0.012, 0.012, bin_dz + 0.012, (0.18, 0.50, 0.22))
-        Primitive3D.draw_box(0.62, bin_center_y + 0.015, z2, bin_dx - 0.02, bin_dy, bin_dz - 0.02, (0.08, 0.22, 0.10))
-        Primitive3D.draw_box(0.54, bin_center_y, z2, 0.002, 0.04, 0.08, (0.95, 0.95, 0.95))
+        Primitive3D.draw_box(cx, bin_center_y, z2, bin_dx, bin_dy, bin_dz, (0.25, 0.65, 0.30))
+        Primitive3D.draw_box(cx, bin_center_y + 0.012, z2, bin_dx - 0.02, bin_dy, bin_dz - 0.02, (0.08, 0.22, 0.10))
 
-        # C. CONTENEDOR 3: RECHAZO (Rojo, Z = cart_z + 0.16)
+        # 3. RECHAZO (Rojo, Z = cart_z + 0.16)
         z3 = cart_z + 0.16
-        Primitive3D.draw_box(0.62, bin_center_y, z3, bin_dx, bin_dy, bin_dz, (0.85, 0.22, 0.20))
-        Primitive3D.draw_box(0.62, bin_center_y + bin_dy*0.5, z3, bin_dx + 0.012, 0.012, bin_dz + 0.012, (0.65, 0.16, 0.15))
-        Primitive3D.draw_box(0.62, bin_center_y + 0.015, z3, bin_dx - 0.02, bin_dy, bin_dz - 0.02, (0.25, 0.08, 0.08))
-        Primitive3D.draw_box(0.54, bin_center_y, z3, 0.002, 0.04, 0.08, (0.95, 0.95, 0.95))
-
-    def draw_diverter_servo(self, servo_angle: float):
-        pass # Reemplazado por el carro móvil indexador M-102
-
-    def draw_sorting_chutes(self, counts: Optional[Tuple[int, int, int]] = None):
-        pass # Reemplazado por el carro móvil indexador M-102
+        Primitive3D.draw_box(cx, bin_center_y, z3, bin_dx, bin_dy, bin_dz, (0.85, 0.22, 0.20))
+        Primitive3D.draw_box(cx, bin_center_y + 0.012, z3, bin_dx - 0.02, bin_dy, bin_dz - 0.02, (0.25, 0.08, 0.08))
 
     def draw_operator_pedestal(self, fsm_state: str, e_stop: bool):
-        """Pedestal de mando con baliza luminosa de 3 pisos y pulsador de emergencia."""
+        """Pedestal de mando con baliza luminosa y seta de Parada de Emergencia."""
         px, py, pz = -0.15, 0.25, -0.30
-        
-        # Columna del pedestal
         Primitive3D.draw_cylinder(px, 0.20, pz, 0.02, 0.40, self.C_STAND, axis='y')
-        # Base de pie
         Primitive3D.draw_cylinder(px, 0.01, pz, 0.08, 0.02, (0.1, 0.1, 0.1), axis='y')
         
-        # Caja de mandos inclinada (Y = 0.42)
         glPushMatrix()
         glTranslatef(px, 0.42, pz)
         glRotatef(-20, 1, 0, 0)
         Primitive3D.draw_box(0, 0, 0, 0.12, 0.06, 0.14, (0.85, 0.88, 0.90))
         
-        # Seta de Parada de Emergencia (HS-100)
         e_color = (0.9, 0.1, 0.1) if not e_stop else (0.4, 0.05, 0.05)
         e_y = 0.045 if not e_stop else 0.032
         Primitive3D.draw_cylinder(0.0, e_y, -0.02, 0.018, 0.018, e_color, axis='y')
-        # Anillo amarillo de advertencia bajo la seta
         Primitive3D.draw_cylinder(0.0, 0.031, -0.02, 0.025, 0.002, (0.95, 0.85, 0.1), axis='y')
 
-        # Pulsador Verde (START) y Pulsador Negro (STOP)
         Primitive3D.draw_cylinder(-0.03, 0.033, 0.03, 0.009, 0.008, (0.2, 0.7, 0.2), axis='y')
         Primitive3D.draw_cylinder(0.03, 0.033, 0.03, 0.009, 0.008, (0.2, 0.2, 0.2), axis='y')
         glPopMatrix()
 
-        # Baliza luminosa industrial de 3 etapas sobre mástil
-        # Mástil
         Primitive3D.draw_cylinder(px, 0.58, pz - 0.05, 0.008, 0.26, (0.7, 0.7, 0.7), axis='y')
         
-        # Determinar qué luz está activa según el estado del firmware
         c_red = (0.2, 0.0, 0.0)
         c_yel = (0.2, 0.2, 0.0)
         c_grn = (0.0, 0.2, 0.0)
 
         if e_stop or "EMERG" in fsm_state:
-            # Parpadeo rojo rápido
             blink = int(time.time() * 6.0) % 2
             c_red = (1.0, 0.1, 0.1) if blink else (0.3, 0.0, 0.0)
         elif fsm_state in ("TRANSPORTE", "TRANSP", "INSPECCION", "INSPEC", "DESVIO"):
-            c_grn = (0.1, 0.95, 0.1) # Verde continuo
+            c_grn = (0.1, 0.95, 0.1)
         elif fsm_state in ("REPOSO", "IDLE"):
-            c_yel = (0.95, 0.85, 0.1) # Ámbar reposo
+            c_yel = (0.95, 0.85, 0.1)
 
-        # Módulos luminosos cilíndricos
         by = 0.72
         Primitive3D.draw_cylinder(px, by + 0.050, pz - 0.05, 0.018, 0.022, c_red, axis='y')
         Primitive3D.draw_cylinder(px, by + 0.025, pz - 0.05, 0.018, 0.022, c_yel, axis='y')
         Primitive3D.draw_cylinder(px, by + 0.000, pz - 0.05, 0.018, 0.022, c_grn, axis='y')
-        # Tapa negra superior
         Primitive3D.draw_cylinder(px, by + 0.065, pz - 0.05, 0.020, 0.008, (0.1, 0.1, 0.1), axis='y')
 
 
 # =====================================================================================
-# SISTEMA DE INTERFAZ DE USUARIO 2D (HUD OVERLAY)
+# SISTEMA DE INTERFAZ DE USUARIO 2D (HUD OVERLAY RETRO)
 # =====================================================================================
 class HUDOverlay:
     """Consola retro industrial unificada en la parte inferior de la pantalla."""
@@ -762,7 +822,6 @@ class HUDOverlay:
         self._init_buttons()
 
     def _init_buttons(self):
-        """Define los botones mecánicos del tablero de comando retro."""
         console_y = self.screen_h - self.console_h
         margin = 10
         w1 = 430
@@ -773,280 +832,236 @@ class HUDOverlay:
         desk_x = x3 + 8
         desk_w = w3 - 16
 
-        # Fila 1: Botones principales
         btn_y1 = console_y + 36
         btn_h1 = 34
         b1_w = (desk_w - 16) // 3
         b1_w_estop = desk_w - 16 - (b1_w * 2)
 
-        # Fila 2: Botones secundarios
-        btn_y2 = console_y + 76
-        btn_h2 = 32
+        self.buttons = [
+            {"id": "START", "label": "INICIAR", "color": (34, 139, 34), "rect": pygame.Rect(desk_x, btn_y1, b1_w, btn_h1), "state": "NORMAL"},
+            {"id": "STOP", "label": "DETENER", "color": (160, 82, 45), "rect": pygame.Rect(desk_x + b1_w + 8, btn_y1, b1_w, btn_h1), "state": "NORMAL"},
+            {"id": "ESTOP", "label": "! E-STOP !", "color": (178, 34, 34), "rect": pygame.Rect(desk_x + (b1_w + 8) * 2, btn_y1, b1_w_estop, btn_h1), "state": "ESTOP"},
+        ]
+
+        btn_y2 = btn_y1 + btn_h1 + 8
+        btn_h2 = 28
         b2_w = (desk_w - 16) // 3
         b2_w_last = desk_w - 16 - (b2_w * 2)
 
-        # Fila 3: Selectores de cámaras
-        btn_y3 = console_y + 116
-        btn_h3 = 28
-        num_cams = 5
-        cam_spacing = 6
-        cam_w = (desk_w - cam_spacing * (num_cams - 1)) // num_cams
+        self.buttons.extend([
+            {"id": "ADD_BOX", "label": "+ CAJA", "color": (70, 80, 95), "rect": pygame.Rect(desk_x, btn_y2, b2_w, btn_h2), "state": "NORMAL"},
+            {"id": "RESET", "label": "RESET HW", "color": (50, 90, 120), "rect": pygame.Rect(desk_x + b2_w + 8, btn_y2, b2_w, btn_h2), "state": "NORMAL"},
+            {"id": "LIGHT", "label": "LUZ +/-", "color": (80, 85, 70), "rect": pygame.Rect(desk_x + (b2_w + 8) * 2, btn_y2, b2_w_last, btn_h2), "state": "NORMAL"},
+        ])
 
-        self.buttons = [
-            {"id": "START",   "rect": pygame.Rect(desk_x, btn_y1, b1_w, btn_h1), "label": "INICIAR", "color": (25, 135, 55)},
-            {"id": "STOP",    "rect": pygame.Rect(desk_x + b1_w + 8, btn_y1, b1_w, btn_h1), "label": "DETENER", "color": (75, 85, 100)},
-            {"id": "ESTOP",   "rect": pygame.Rect(desk_x + (b1_w + 8) * 2, btn_y1, b1_w_estop, btn_h1), "label": "! E-STOP !", "color": (215, 35, 35)},
-            {"id": "ADD_BOX", "rect": pygame.Rect(desk_x, btn_y2, b2_w, btn_h2), "label": "+ CAJA", "color": (30, 110, 205)},
-            {"id": "RESET",   "rect": pygame.Rect(desk_x + b2_w + 8, btn_y2, b2_w, btn_h2), "label": "RESET ALM", "color": (200, 110, 25)},
-            {"id": "LIGHT",   "rect": pygame.Rect(desk_x + (b2_w + 8) * 2, btn_y2, b2_w_last, btn_h2), "label": "LUZ AMB", "color": (180, 145, 30)},
-        ]
-        cam_labels = ["1:ISO", "2:CAM", "3:LAT", "4:CARRO", "5:TOLVA"]
-        for i in range(num_cams):
-            cx = desk_x + i * (cam_w + cam_spacing)
+        v_y = btn_y2 + btn_h2 + 22
+        v_h = 24
+        v_w = (desk_w - 24) // 5
+
+        v_labels = ["V1:ISO", "V2:SEN", "V3:CAM", "V4:CAR", "V5:TOL"]
+        for i in range(5):
+            cur_w = v_w if i < 4 else desk_w - (v_w + 6) * 4
             self.buttons.append({
                 "id": f"V{i+1}",
-                "rect": pygame.Rect(cx, btn_y3, cam_w, btn_h3),
-                "label": cam_labels[i],
-                "color": (55, 65, 80)
+                "label": v_labels[i],
+                "color": (55, 65, 78),
+                "rect": pygame.Rect(desk_x + i * (v_w + 6), v_y, cur_w, v_h),
+                "state": "PRESET"
             })
 
-    def render(self, state: PlantState, fps: float, counts: Tuple[int, int, int, int]):
-        """Renderizado completo de la consola retro industrial en la parte inferior."""
+    def render(self, state: PlantState, fps: float, counts: Optional[Tuple[int, int, int, int]] = None):
         glViewport(0, 0, self.screen_w, self.screen_h)
-
         glMatrixMode(GL_PROJECTION)
         glPushMatrix()
         glLoadIdentity()
-        gluOrtho2D(0, self.screen_w, self.screen_h, 0)
-        
+        glOrtho(0, self.screen_w, self.screen_h, 0, -1, 1)
         glMatrixMode(GL_MODELVIEW)
         glPushMatrix()
         glLoadIdentity()
-        
         glDisable(GL_DEPTH_TEST)
         glDisable(GL_LIGHTING)
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
         console_y = self.screen_h - self.console_h
         margin = 10
+        gap = 10
+
+        self._draw_rect(0, console_y, self.screen_w, self.console_h, (26, 30, 36))
+        self._draw_rect(0, console_y, self.screen_w, 3, (70, 78, 90))
+        self._draw_rect(0, console_y + 3, self.screen_w, 1, (15, 18, 22))
+
+        self._draw_text("[ CONSOLA DE SUPERVISIÓN INDUSTRIAL // AUTO-TIF v2.5 ]", 14, console_y + 8, (200, 210, 225), self.font_title)
+        self._draw_text(f"GrabCAD CAD Engine | FPS: {fps:4.1f} | ATmega328P Cooperativo", self.screen_w - 380, console_y + 8, (140, 160, 180), self.font_mono)
+
+        x1 = margin
+        y_top = console_y + 26
+        h_mods = self.console_h - 34
         w1 = 430
+        self._render_crt_screen(x1, y_top, w1, h_mods, state)
+
+        x2 = x1 + w1 + gap
         w2 = 320
-        x3 = margin + w1 + 10 + w2 + 10
-        w3 = max(390, self.screen_w - x3 - margin)
-        y_panels = console_y + 28
-        h_panels = self.console_h - 36
+        self._render_stats_screen(x2, y_top, w2, h_mods, state, counts)
 
-        # 1. Chasis exterior oscuro de la consola
-        self._draw_rect(0, console_y, self.screen_w, self.console_h, (28, 33, 40), 1.0)
-        # Embellecedor superior
-        self._draw_bevel_box(0, console_y, self.screen_w, 24, (50, 56, 66), False)
-        self._draw_text("[ CONSOLA DE SUPERVISION INDUSTRIAL // AUTO-TIF v2.4 ]", 16, console_y + 4, (225, 230, 240), self.font_title)
-        self._draw_text(f"ATmega328P • FPS: {fps:4.1f}", self.screen_w - 220, console_y + 4, (150, 190, 220), self.font_mono)
+        x3 = x2 + w2 + gap
+        w3 = self.screen_w - x3 - margin
+        self._render_control_desk(x3, y_top, w3, h_mods)
 
-        # 2. MÓDULO A: CRT-1 (Terminal de Fósforo Verde - Lazos & FSM)
-        self._draw_bevel_box(margin, y_panels, w1, h_panels, (5, 12, 7), True)
-        self._draw_rect_outline(margin, y_panels, w1, h_panels, (38, 115, 55), 1.0)
-        self._draw_scanlines(margin, y_panels, w1, h_panels)
-
-        self._draw_text(">> CRT-1: TELEMETRIA FSM & CONTROL INDUSTRIAL <<", margin + 12, y_panels + 6, (80, 255, 140), self.font_mono)
-
-        fsm_col = (70, 255, 130)
-        display_state = state.fsm_state
-        if state.emergency_stop or "EMERG" in state.fsm_state:
-            fsm_col = (255, 60, 60)
-            display_state = "EMERGENCIA!"
-        elif state.fsm_state in ("TRANSPORTE", "TRANSP"):
-            fsm_col = (70, 240, 130)
-            display_state = "TRANSPORTE"
-        elif state.fsm_state in ("INSPECCION", "INSPEC"):
-            fsm_col = (60, 230, 255)
-            display_state = "INSPECCION"
-        elif state.fsm_state == "DESVIO":
-            fsm_col = (255, 220, 50)
-            display_state = "DESVIO ACTIVO"
-
-        self._draw_text(f"ESTADO FSM   : [ {display_state:<11} ]", margin + 12, y_panels + 28, fsm_col, self.font_mono)
-        self._draw_text(f"SONAR ZT-101: {state.ultrasonic_dist_cm:4.1f} cm", margin + 250, y_panels + 28, (120, 245, 255), self.font_mono)
-
-        # Barra de proximidad analógica
-        filled = max(0, min(12, int((state.ultrasonic_dist_cm / 35.0) * 12.0)))
-        bar_str = "=" * filled + "." * (12 - filled)
-        self._draw_text(f"VELOCIDAD FAJA: {state.belt_speed_mps:4.2f} m/s | PWM {state.motor_pwm:3d} [{bar_str}]", margin + 12, y_panels + 48, (80, 245, 130), self.font_mono)
-
-        # Lazo 2: Carro Móvil
-        dest_str = "CENTRO [OK]"
-        if getattr(state, 'target_cart_z', 0.0) > 0.05:
-            dest_str = "IZQ [RETR]"
-        elif getattr(state, 'target_cart_z', 0.0) < -0.05:
-            dest_str = "DER [RECH]"
-        cart_mm = getattr(state, 'cart_z', 0.0) * 1000.0
-        self._draw_text(f"CARRO GAVETAS : {cart_mm:+4.0f} mm  -> DESTINO: {dest_str}", margin + 12, y_panels + 68, (80, 245, 130), self.font_mono)
-
-        # Lazo 3: Luz LDR y LED
-        self._draw_text(f"LUZ CAMARA PID: {state.total_lux_pct:4.1f}% (SP: {state.sp_lux_pct:2.0f}%) | LED: {state.led_pwm:3d}/255", margin + 12, y_panels + 88, (80, 245, 130), self.font_mono)
-
-        # Prompt
-        self._draw_text(f"ATmega328P::OK [20ms] • LUZ AMB: {state.ambient_lux_pct:2.0f}% > EN LINEA", margin + 12, y_panels + 108, (70, 215, 110), self.font_mono)
-
-        # 3. MÓDULO B: CRT-2 (OEE & Matriz de Producción)
-        x2 = margin + w1 + 10
-        self._draw_bevel_box(x2, y_panels, w2, h_panels, (8, 12, 18), True)
-        self._draw_rect_outline(x2, y_panels, w2, h_panels, (50, 110, 160), 1.0)
-        self._draw_scanlines(x2, y_panels, w2, h_panels)
-
-        self._draw_text(">> CRT-2: CLASIFICACION & OEE <<", x2 + 12, y_panels + 6, (120, 225, 255), self.font_mono)
-
-        cell_w = (w2 - 30) // 2
-        cell_h = 34
-        tot, conf, retr, rech = counts
-
-        # Celda 1: TOTAL
-        self._draw_bevel_box(x2 + 10, y_panels + 24, cell_w, cell_h, (25, 32, 45), True)
-        self._draw_text("TOTAL", x2 + 16, y_panels + 27, (170, 185, 205), self.font_mono_small)
-        self._draw_text(f"{tot:04d}", x2 + 75, y_panels + 31, (240, 248, 255), self.font_digits)
-
-        # Celda 2: CONFORME
-        self._draw_bevel_box(x2 + 10 + cell_w + 10, y_panels + 24, cell_w, cell_h, (12, 38, 20), True)
-        self._draw_text("CONFORME", x2 + 10 + cell_w + 14, y_panels + 27, (110, 225, 130), self.font_mono_small)
-        self._draw_text(f"{conf:04d}", x2 + 10 + cell_w + 75, y_panels + 31, (80, 255, 100), self.font_digits)
-
-        # Celda 3: RETRABAJO
-        self._draw_bevel_box(x2 + 10, y_panels + 62, cell_w, cell_h, (40, 32, 10), True)
-        self._draw_text("RETRABAJO", x2 + 16, y_panels + 65, (235, 185, 50), self.font_mono_small)
-        self._draw_text(f"{retr:04d}", x2 + 75, y_panels + 69, (255, 210, 40), self.font_digits)
-
-        # Celda 4: RECHAZO
-        self._draw_bevel_box(x2 + 10 + cell_w + 10, y_panels + 62, cell_w, cell_h, (45, 15, 15), True)
-        self._draw_text("RECHAZO", x2 + 10 + cell_w + 14, y_panels + 65, (245, 100, 90), self.font_mono_small)
-        self._draw_text(f"{rech:04d}", x2 + 10 + cell_w + 75, y_panels + 69, (255, 70, 70), self.font_digits)
-
-        # Eficiencia OEE
-        oee = (conf / tot * 100.0) if tot > 0 else 100.0
-        self._draw_text(f"EFICIENCIA OEE: {oee:5.1f}% [CONF/TOTAL]", x2 + 12, y_panels + 102, (225, 238, 250), self.font_mono)
-
-        # Hardware LEDs
-        self._draw_led(x2 + 25, y_panels + 124, 4.5, (30, 255, 60), True)
-        self._draw_text("POWER", x2 + 34, y_panels + 118, (180, 205, 230), self.font_mono_small)
-
-        self._draw_led(x2 + 95, y_panels + 124, 4.5, (50, 160, 255), state.belt_speed_mps > 0.01)
-        self._draw_text("FAJA ON", x2 + 104, y_panels + 118, (180, 205, 230), self.font_mono_small)
-
-        self._draw_led(x2 + 175, y_panels + 124, 4.5, (255, 210, 30), state.fsm_state in ("INSPECCION", "INSPEC"))
-        self._draw_text("VISION", x2 + 184, y_panels + 118, (180, 205, 230), self.font_mono_small)
-
-        self._draw_led(x2 + 245, y_panels + 124, 4.5, (255, 50, 50), state.emergency_stop or "EMERG" in state.fsm_state)
-        self._draw_text("ALARMA", x2 + 254, y_panels + 118, (180, 205, 230), self.font_mono_small)
-
-        # 4. MÓDULO C: TABLERO DE MANDO ANALÓGICO RETRO
-        self._draw_bevel_box(x3, y_panels, w3, h_panels, (36, 42, 52), False)
-        self._draw_rect_outline(x3, y_panels, w3, h_panels, (80, 92, 110), 1.0)
-        self._draw_text(">> TABLERO DE ACCIONAMIENTO RAPIDO <<", x3 + 12, y_panels + 6, (230, 235, 245), self.font_mono)
-
-        mouse_pos = pygame.mouse.get_pos()
-        for btn in self.buttons:
-            r = btn["rect"]
-            hover = r.collidepoint(mouse_pos)
-            col = btn["color"]
-            if hover:
-                col = (min(255, col[0] + 30), min(255, col[1] + 30), min(255, col[2] + 30))
-
-            if btn["id"] == "ESTOP":
-                self._draw_rect_outline(r.x - 2, r.y - 2, r.width + 4, r.height + 4, (242, 200, 38), 2.0)
-                self._draw_bevel_box(r.x, r.y, r.width, r.height, col, False)
-                self._draw_text_centered(btn["label"], r.centerx, r.centery, (255, 255, 255), self.font_bold)
-            else:
-                self._draw_bevel_box(r.x, r.y, r.width, r.height, col, False)
-                self._draw_text_centered(btn["label"], r.centerx, r.centery, (255, 255, 255), self.font_bold)
-
-        # Restaurar estado 3D
-        glDisable(GL_BLEND)
         glEnable(GL_DEPTH_TEST)
         glEnable(GL_LIGHTING)
-        
         glMatrixMode(GL_PROJECTION)
         glPopMatrix()
         glMatrixMode(GL_MODELVIEW)
         glPopMatrix()
 
-    def _draw_rect(self, x, y, w, h, col, alpha=1.0):
-        glColor4f(col[0]/255.0, col[1]/255.0, col[2]/255.0, alpha)
+    def _render_crt_screen(self, x: int, y: int, w: int, h: int, state: PlantState):
+        self._draw_rect(x, y, w, h, (10, 12, 14))
+        self._draw_border(x, y, w, h, (40, 48, 56), (5, 6, 8))
+        self._draw_rect(x + 4, y + 4, w - 8, h - 8, (8, 24, 16))
+        self._draw_rect(x + 4, y + 4, w - 8, 16, (14, 38, 26))
+        self._draw_text("● TELEMETRÍA FSM & LAZOS (CRT-1)", x + 10, y + 6, (80, 220, 140), self.font_mono_small)
+
+        tx = x + 14
+        ty = y + 26
+        dy = 17
+        c_green = (100, 255, 160)
+        c_val = (180, 255, 200)
+
+        fsm_str = state.fsm_state[:8]
+        self._draw_text("• [FSM]:", tx, ty, c_green, self.font_mono)
+        self._draw_text(f"{fsm_str:<8} (D11/D12/D13)", tx + 75, ty, (255, 220, 80) if "EMERG" in fsm_str else c_val, self.font_mono)
+
+        ty += dy
+        self._draw_text("• ZT-101 (Dist):", tx, ty, c_green, self.font_mono)
+        self._draw_text(f"{state.ultrasonic_dist_cm:5.1f} cm (SP=25.0 cm)", tx + 135, ty, c_val, self.font_mono)
+
+        ty += dy
+        self._draw_text("• M-101 (Motor):", tx, ty, c_green, self.font_mono)
+        self._draw_text(f"{state.motor_pwm:3d}/200 PWM ({state.belt_speed_mps*100:4.1f} cm/s)", tx + 135, ty, c_val, self.font_mono)
+
+        ty += dy
+        self._draw_text("• QL-103 (LED):", tx, ty, c_green, self.font_mono)
+        self._draw_text(f"{state.led_pwm:3d}/255 PWM (SP={state.sp_lux_pct:2.0f}%)", tx + 135, ty, c_val, self.font_mono)
+
+        ty += dy
+        self._draw_text("• QE-103 (Lux):", tx, ty, c_green, self.font_mono)
+        self._draw_text(f"{state.total_lux_pct:5.1f}% [Amb:{state.ambient_lux_pct:4.1f}%]", tx + 135, ty, c_val, self.font_mono)
+
+        ty += dy
+        self._draw_text("• Carro M-102:", tx, ty, c_green, self.font_mono)
+        chute_tag = "CONFORME" if abs(state.cart_z) < 0.08 else ("RETRABAJO" if state.cart_z > 0 else "RECHAZO")
+        self._draw_text(f"Z={state.cart_z:+5.2f}m [{chute_tag}]", tx + 135, ty, c_val, self.font_mono)
+
+        ty += dy
+        self._draw_text("• E-STOP (D2):", tx, ty, c_green, self.font_mono)
+        es_str = "DISPARADO !!" if state.emergency_stop else "ARMADO / SEGURO"
+        self._draw_text(es_str, tx + 135, ty, (255, 80, 80) if state.emergency_stop else (100, 220, 140), self.font_mono)
+
+    def _render_stats_screen(self, x: int, y: int, w: int, h: int, state: PlantState, counts: Optional[Tuple[int, int, int, int]]):
+        self._draw_rect(x, y, w, h, (10, 12, 14))
+        self._draw_border(x, y, w, h, (40, 48, 56), (5, 6, 8))
+        self._draw_rect(x + 4, y + 4, w - 8, h - 8, (16, 20, 26))
+        self._draw_rect(x + 4, y + 4, w - 8, 16, (26, 32, 42))
+        self._draw_text("■ MATRIZ OEE Y PRODUCCIÓN (CRT-2)", x + 10, y + 6, (180, 200, 225), self.font_mono_small)
+
+        tot, conf, retr, rech = counts if counts else (0, 0, 0, 0)
+        p_c = (conf / tot * 100.0) if tot > 0 else 0.0
+        p_r = (retr / tot * 100.0) if tot > 0 else 0.0
+        p_f = (rech / tot * 100.0) if tot > 0 else 0.0
+
+        grid_y = y + 26
+        gw = (w - 24) // 2
+        gh = 42
+
+        # TOTAL
+        self._draw_rect(x + 8, grid_y, gw, gh, (24, 30, 40))
+        self._draw_text("TOTAL PIEZAS", x + 14, grid_y + 4, (140, 160, 180), self.font_mono_small)
+        self._draw_text(f"{tot:4d} u", x + 14, grid_y + 18, (240, 245, 255), self.font_digits)
+
+        # CONFORME
+        self._draw_rect(x + 16 + gw, grid_y, gw, gh, (18, 38, 24))
+        self._draw_text("CONFORME (90°)", x + 22 + gw, grid_y + 4, (120, 200, 140), self.font_mono_small)
+        self._draw_text(f"{conf:3d} ({p_c:4.1f}%)", x + 22 + gw, grid_y + 18, (100, 255, 140), self.font_digits)
+
+        grid_y += gh + 6
+        # RETRABAJO
+        self._draw_rect(x + 8, grid_y, gw, gh, (42, 34, 16))
+        self._draw_text("RETRABAJO (45°)", x + 14, grid_y + 4, (220, 180, 90), self.font_mono_small)
+        self._draw_text(f"{retr:3d} ({p_r:4.1f}%)", x + 14, grid_y + 18, (255, 200, 80), self.font_digits)
+
+        # RECHAZO
+        self._draw_rect(x + 16 + gw, grid_y, gw, gh, (42, 20, 20))
+        self._draw_text("RECHAZO (135°)", x + 22 + gw, grid_y + 4, (220, 120, 120), self.font_mono_small)
+        self._draw_text(f"{rech:3d} ({p_f:4.1f}%)", x + 22 + gw, grid_y + 18, (255, 100, 100), self.font_digits)
+
+        # Barra de Estado Hardware
+        stat_y = grid_y + gh + 8
+        self._draw_rect(x + 8, stat_y, w - 16, 26, (18, 22, 28))
+        led_spacing = (w - 20) // 4
+
+        l1_on = not state.emergency_stop
+        l2_on = state.motor_pwm > 0
+        l3_on = state.ultrasonic_dist_cm < 45.0
+        l4_on = state.led_pwm > 30
+
+        labels = [("SYS OK", l1_on, (40, 220, 80)),
+                  ("RUN", l2_on, (40, 200, 80)),
+                  ("SONAR", l3_on, (60, 180, 255)),
+                  ("LUZ PID", l4_on, (255, 200, 40))]
+
+        for i, (txt, is_on, col) in enumerate(labels):
+            lx = x + 12 + i * led_spacing
+            ly = stat_y + 7
+            c_fill = col if is_on else (40, 48, 56)
+            self._draw_rect(lx, ly, 10, 10, c_fill)
+            self._draw_border(lx, ly, 10, 10, (180, 190, 200) if is_on else (60, 70, 80), (10, 12, 14))
+            self._draw_text(txt, lx + 14, ly - 1, (200, 210, 220) if is_on else (100, 110, 120), self.font_mono_small)
+
+    def _render_control_desk(self, x: int, y: int, w: int, h: int):
+        self._draw_rect(x, y, w, h, (32, 36, 44))
+        self._draw_border(x, y, w, h, (60, 68, 80), (15, 18, 22))
+        self._draw_rect(x + 4, y + 4, w - 8, 16, (44, 50, 62))
+        self._draw_text("TABLERO DE ACCIONAMIENTO INDUSTRIAL", x + 10, y + 6, (220, 230, 245), self.font_title)
+
+        for btn in self.buttons:
+            rect = btn["rect"]
+            col = btn["color"]
+            label = btn["label"]
+            st = btn.get("state", "NORMAL")
+
+            if st == "ESTOP":
+                for sx in range(rect.x - 4, rect.x + rect.w + 4, 12):
+                    self._draw_rect(sx, rect.y - 4, 6, rect.h + 8, (220, 180, 20))
+                self._draw_rect(rect.x, rect.y, rect.w, rect.h, col)
+                self._draw_border(rect.x, rect.y, rect.w, rect.h, (255, 100, 100), (80, 10, 10))
+                self._draw_text_centered(label, rect.centerx, rect.centery, (255, 255, 255), self.font_bold)
+            else:
+                self._draw_rect(rect.x, rect.y, rect.w, rect.h, col)
+                self._draw_border(rect.x, rect.y, rect.w, rect.h, (col[0]+40, col[1]+40, col[2]+40), (col[0]-30, col[1]-30, col[2]-30))
+                self._draw_text_centered(label, rect.centerx, rect.centery, (240, 245, 250), self.font_bold if st != "PRESET" else self.font_mono_small)
+
+    def _draw_rect(self, x: int, y: int, w: int, h: int, color: Tuple[int, int, int]):
+        glColor3ub(color[0], color[1], color[2])
         glBegin(GL_QUADS)
-        glVertex2f(x, y)
-        glVertex2f(x + w, y)
-        glVertex2f(x + w, y + h)
-        glVertex2f(x, y + h)
+        glVertex2i(x, y)
+        glVertex2i(x + w, y)
+        glVertex2i(x + w, y + h)
+        glVertex2i(x, y + h)
         glEnd()
 
-    def _draw_rect_outline(self, x, y, w, h, col, width=1.0):
-        glColor3f(col[0]/255.0, col[1]/255.0, col[2]/255.0)
-        glLineWidth(width)
-        glBegin(GL_LINE_LOOP)
-        glVertex2f(x, y)
-        glVertex2f(x + w, y)
-        glVertex2f(x + w, y + h)
-        glVertex2f(x, y + h)
-        glEnd()
-
-    def _draw_bevel_box(self, x, y, w, h, col, inset=False):
-        self._draw_rect(x, y, w, h, col, 1.0)
-        lr = min(255, col[0] + 65)
-        lg = min(255, col[1] + 65)
-        lb = min(255, col[2] + 65)
-        dr = max(0, col[0] - 55)
-        dg = max(0, col[1] - 55)
-        db = max(0, col[2] - 55)
-        top_col = (dr, dg, db) if inset else (lr, lg, lb)
-        bot_col = (lr, lg, lb) if inset else (dr, dg, db)
-
-        glDisable(GL_LIGHTING)
-        glLineWidth(2.0)
+    def _draw_border(self, x: int, y: int, w: int, h: int, light_col: Tuple[int, int, int], dark_col: Tuple[int, int, int]):
+        glColor3ub(light_col[0], light_col[1], light_col[2])
         glBegin(GL_LINES)
-        glColor3f(top_col[0]/255.0, top_col[1]/255.0, top_col[2]/255.0)
-        glVertex2f(x, y + 1); glVertex2f(x + w, y + 1)
-        glVertex2f(x + 1, y); glVertex2f(x + 1, y + h)
-        glColor3f(bot_col[0]/255.0, bot_col[1]/255.0, bot_col[2]/255.0)
-        glVertex2f(x, y + h - 1); glVertex2f(x + w, y + h - 1)
-        glVertex2f(x + w - 1, y); glVertex2f(x + w - 1, y + h)
+        glVertex2i(x, y); glVertex2i(x + w, y)
+        glVertex2i(x, y); glVertex2i(x, y + h)
         glEnd()
-
-    def _draw_scanlines(self, x, y, w, h):
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glColor4f(0.0, 0.0, 0.0, 0.18)
-        glLineWidth(1.0)
+        glColor3ub(dark_col[0], dark_col[1], dark_col[2])
         glBegin(GL_LINES)
-        sy = y + 2.0
-        while sy < y + h:
-            glVertex2f(x + 1, sy)
-            glVertex2f(x + w - 1, sy)
-            sy += 3.0
-        glEnd()
-
-    def _draw_led(self, cx, cy, radius, col, active=True):
-        glDisable(GL_LIGHTING)
-        glBegin(GL_TRIANGLE_FAN)
-        if active:
-            glColor3f(col[0]/255.0, col[1]/255.0, col[2]/255.0)
-        else:
-            glColor3f(col[0]*0.22/255.0, col[1]*0.22/255.0, col[2]*0.22/255.0)
-        glVertex2f(cx, cy)
-        for i in range(13):
-            a = 2.0 * math.pi * i / 12.0
-            glVertex2f(cx + math.cos(a) * radius, cy + math.sin(a) * radius)
-        glEnd()
-
-        # Aro metálico
-        glColor3f(0.35, 0.40, 0.45)
-        glLineWidth(1.0)
-        glBegin(GL_LINE_LOOP)
-        for i in range(12):
-            a = 2.0 * math.pi * i / 12.0
-            glVertex2f(cx + math.cos(a) * (radius + 1.0), cy + math.sin(a) * (radius + 1.0))
+        glVertex2i(x + w, y); glVertex2i(x + w, y + h)
+        glVertex2i(x, y + h); glVertex2i(x + w, y + h)
         glEnd()
 
     def _draw_text(self, text: str, x: int, y: int, color: Tuple[int, int, int], font: pygame.font.Font):
-        key = (text, color, id(font))
+        key = (text, color, font)
         cached = self._text_cache.get(key)
         if cached is not None:
             tex, w, h = cached
@@ -1092,6 +1107,7 @@ class HUDOverlay:
             self._draw_text(text, cx - w//2 + 1, cy - h//2 + 1, (10, 15, 20), font)
         self._draw_text(text, cx - w//2, cy - h//2, color, font)
 
+
 # =====================================================================================
 # BUCLE PRINCIPAL DE LA APLICACIÓN 3D
 # =====================================================================================
@@ -1104,7 +1120,6 @@ class DigitalTwin3DApp:
         pygame.init()
         pygame.display.set_caption("Estación Logística 3D - Gemelo Digital Industrial (PyOpenGL)")
         
-        # Configuración OpenGL y Anti-aliasing
         pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLEBUFFERS, 1)
         pygame.display.gl_set_attribute(pygame.GL_MULTISAMPLESAMPLES, 4)
         pygame.display.gl_set_attribute(pygame.GL_DEPTH_SIZE, 24)
@@ -1135,33 +1150,29 @@ class DigitalTwin3DApp:
         self.count_retrabajo = 0
         self.count_rechazo = 0
 
-        # Iluminación OpenGL
         self._setup_opengl()
 
     def _setup_opengl(self):
-        """Inicializa parámetros de renderizado e iluminación técnica."""
         glEnable(GL_DEPTH_TEST)
         glDepthFunc(GL_LEQUAL)
         glShadeModel(GL_SMOOTH)
         glEnable(GL_COLOR_MATERIAL)
         glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
         
-        # Fondo blanco técnico / gris estudio
-        glClearColor(0.93, 0.94, 0.96, 1.0)
+        # Fondo suave de ingeniería
+        glClearColor(0.88, 0.90, 0.93, 1.0)
         
-        # Luz ambiental global y direccional (Sol de taller)
+        # Luces de taller
         glEnable(GL_LIGHTING)
         glEnable(GL_LIGHT0)
         glLightfv(GL_LIGHT0, GL_POSITION, [1.5, 3.5, 2.0, 0.0])
         glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.85, 0.85, 0.82, 1.0])
         glLightfv(GL_LIGHT0, GL_AMBIENT, [0.45, 0.48, 0.52, 1.0])
         
-        # Luz secundaria de relleno
         glEnable(GL_LIGHT1)
         glLightfv(GL_LIGHT1, GL_POSITION, [-2.0, 2.0, -1.5, 0.0])
         glLightfv(GL_LIGHT1, GL_DIFFUSE, [0.25, 0.28, 0.32, 1.0])
 
-        # Luz puntual de inspección (GL_LIGHT2) configurada dinámicamente
         glEnable(GL_LIGHT2)
         glLightf(GL_LIGHT2, GL_CONSTANT_ATTENUATION, 1.0)
         glLightf(GL_LIGHT2, GL_LINEAR_ATTENUATION, 0.2)
@@ -1179,9 +1190,8 @@ class DigitalTwin3DApp:
         glMatrixMode(GL_MODELVIEW)
 
     def spawn_box(self, quality: Optional[str] = None):
-        """Genera una nueva pieza en el alimentador de entrada."""
+        """Genera una nueva pieza en la tolva de entrada."""
         if quality is None:
-            # Distribución típica de calidad industrial
             r = random.random()
             if r < 0.65:
                 quality = "CONFORME"
@@ -1193,21 +1203,18 @@ class DigitalTwin3DApp:
         new_box = DynamicBox(quality)
         self.boxes.append(new_box)
         
-        # Notificar también al emulador interno
         self.physics.reset_piece(quality)
         if self.firmware.fsm_state in ("REPOSO", "IDLE"):
             self.firmware.fsm_state = "TRANSP"
 
     def run(self):
-        """Bucle interactivo principal."""
         running = True
         auto_spawn = True
 
         while running:
-            dt = self.clock.tick(60) / 1000.0  # Límite a 60 FPS
-            dt = min(0.05, dt)  # Evitar grandes saltos de integración temporal
+            dt = self.clock.tick(60) / 1000.0
+            dt = min(0.05, dt)
 
-            # 1. Procesamiento de Eventos de Usuario
             for event in pygame.event.get():
                 if event.type == QUIT:
                     running = False
@@ -1231,7 +1238,6 @@ class DigitalTwin3DApp:
                     elif event.key == K_5:
                         self.camera.set_preset(5)
                 elif event.type == MOUSEBUTTONDOWN:
-                    # Verificar si hizo clic en algún botón del HUD
                     clicked_hud = False
                     for btn in self.hud.buttons:
                         if btn["rect"].collidepoint(event.pos):
@@ -1251,7 +1257,6 @@ class DigitalTwin3DApp:
                                 self.physics.trigger_emergency(False)
                                 self.firmware.fsm_state = "REPOSO"
                             elif b_id == "LIGHT":
-                                # Alternar perturbación de luz ambiental
                                 if self.physics.state.ambient_lux_pct > 25.0:
                                     self.physics.inject_disturbance(15.0)
                                 else:
@@ -1266,59 +1271,81 @@ class DigitalTwin3DApp:
                 else:
                     self.camera.handle_event(event)
 
-            # 2. Lógica y Cinemática de Cajas
-            # Generación automática de cajas espaciadas desde la tolva de alimentación
-            if auto_spawn and self.firmware.fsm_state not in ("REPOSO", "EMERG!", "IDLE"):
+            # Generación automática de cajas (cadencia continua de planta)
+            if auto_spawn and self.firmware.fsm_state not in ("EMERG!", "IDLE"):
                 self.box_spawn_timer -= dt
                 if self.box_spawn_timer <= 0:
-                    # Solo generar si no hay una caja ocupando la boca de entrada
-                    if not any(b.pos_x < -0.30 for b in self.boxes if b.state in ("EN_FAJA", "CAYENDO_DE_TOLVA")):
+                    if not any(b.pos_x < -0.25 for b in self.boxes if b.state in ("EN_FAJA", "CAYENDO_DE_TOLVA")):
                         self.spawn_box()
-                    self.box_spawn_timer = random.uniform(3.5, 5.0)
+                    self.box_spawn_timer = random.uniform(3.0, 4.5)
 
-            # Determinar distancia al obstáculo más cercano al sensor ultrasónico (X = 0.35)
-            sensor_x = 0.35
-            closest_dist_cm = 50.0
-            active_box_for_cam = None
+            # Auto-arranque si hay piezas en la faja y el firmware está en reposo
+            if self.firmware.fsm_state == "REPOSO" and any(b.state in ("EN_FAJA", "CAYENDO_DE_TOLVA") for b in self.boxes):
+                self.firmware.fsm_state = "TRANSP"
+
+            # Detección sonar: Sensor en X = +0.47 apuntando hacia -X
+            sensor_x = 0.47
+            closest_dist_cm = 100.0
+            approaching_box = None
 
             for box in self.boxes:
                 if box.state == "EN_FAJA":
-                    # Distancia desde el sensor hacia la caja
-                    d_cm = (sensor_x - box.pos_x) * 100.0
+                    # Borde frontal de la caja mirando hacia el sensor (+X)
+                    box_front_x = box.pos_x + 0.0275
+                    d_cm = (sensor_x - box_front_x) * 100.0
                     if 0.0 < d_cm < closest_dist_cm:
                         closest_dist_cm = d_cm
-                    # Detección de caja en la zona de cámara (X entre 0.20 y 0.30)
-                    if 0.18 <= box.pos_x <= 0.30:
-                        active_box_for_cam = box
+                        approaching_box = box
 
-            # 3. Ejecución del Ciclo de Control (Firmware Virtual ATmega328P)
+            # 3. Balance fotométrico dinámico (Lazo 3)
+            # Solo cuando la caja entra en la zona de cámara/sensor (d <= 14 cm), su reflectancia modula la lectura
+            if approaching_box and closest_dist_cm <= 14.0:
+                if approaching_box.quality == "CONFORME":
+                    box_reflectance = 78.0  # Alta reflectancia
+                elif approaching_box.quality == "RETRABAJO":
+                    box_reflectance = 52.0  # Media reflectancia
+                else:
+                    box_reflectance = 28.0  # Baja reflectancia (oscura/defectuosa)
+            else:
+                box_reflectance = self.physics.state.ambient_lux_pct
+
+            # Ciclo de control firmware
             e_stop_flag = self.physics.state.emergency_stop
             motor_pwm, led_pwm, servo_ang = self.firmware.execute_cycle(
-                dt, closest_dist_cm, self.physics.state.total_lux_pct, e_stop_flag
+                dt, closest_dist_cm, box_reflectance, e_stop_flag
             )
 
-            # Si una caja está bajo la cámara y se decide la clasificación
-            if active_box_for_cam and self.firmware.fsm_state == "DESVIO":
-                # Configurar ángulo del servo y objetivo del carro móvil según calidad de la caja actual
-                if active_box_for_cam.quality == "RETRABAJO":
+            # Sincronizar posición del carro móvil indexador M-102
+            # El carro se desplaza hacia la gaveta de clasificación correspondiente a la pieza activa
+            active_target_box = None
+            for b in self.boxes:
+                if b.state in ("EN_FAJA", "EN_DESVIO") and b.pos_x >= 0.28:
+                    active_target_box = b
+                    break
+
+            if active_target_box:
+                if active_target_box.quality == "RETRABAJO":
                     self.firmware.servo_angle = 45
-                    self.firmware.target_cart_z = 0.16
-                elif active_box_for_cam.quality == "RECHAZO":
+                    self.firmware.target_cart_z = 0.16   # Desplaza tolva ámbar al centro
+                elif active_target_box.quality == "RECHAZO":
                     self.firmware.servo_angle = 135
-                    self.firmware.target_cart_z = -0.16
+                    self.firmware.target_cart_z = -0.16  # Desplaza tolva roja al centro
                 else:
                     self.firmware.servo_angle = 90
-                    self.firmware.target_cart_z = 0.0
+                    self.firmware.target_cart_z = 0.0    # Tolva verde en el centro
+            elif not any(b.state in ("EN_FAJA", "EN_DESVIO") for b in self.boxes):
+                self.firmware.target_cart_z = 0.0
 
-            # 4. Integración de la Física Continua
+            # Dinámica física continua (integra el movimiento suave del carro hacia target_cart_z)
             self.physics.step(motor_pwm, led_pwm, self.firmware.servo_angle, self.firmware.target_cart_z)
             self.physics.state.fsm_state = self.firmware.fsm_state
+            # Sincronizar telemetría de instrumentación 3D en el HUD y CRT
+            self.physics.state.ultrasonic_dist_cm = closest_dist_cm
+            self.physics.state.total_lux_pct = box_reflectance
 
-            # Actualizar movimiento 3D de cada caja
             for box in list(self.boxes):
                 box.update(dt, self.physics.state.belt_speed_mps, self.physics.state.cart_z)
 
-                # Contabilizar y evacuar tras reposar visiblemente dentro de su gaveta
                 if box.state == "FINALIZADA" and box.settle_timer >= 2.5:
                     self.count_total += 1
                     if box.target_chute == 1:
@@ -1329,33 +1356,31 @@ class DigitalTwin3DApp:
                         self.count_rechazo += 1
                     self.boxes.remove(box)
 
-            # Actualizar cámara
             self.camera.update(dt)
 
-            # 5. Renderizado 3D
+            # Renderizado 3D
             self._set_projection()
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
             glLoadIdentity()
             self.camera.apply()
 
-            # Dibujar elementos del modelo opacos
             glDepthMask(GL_TRUE)
             self.model3d.draw_floor()
-            self.model3d.draw_conveyor_frame(self.physics.state.belt_speed_mps, dt)
+            self.model3d.draw_conveyor(self.physics.state.belt_speed_mps, dt)
+            self.model3d.draw_discharge_chute()
             self.model3d.draw_feed_hopper()
-            self.model3d.draw_discharge_lip()
             self.model3d.draw_motorized_container_shuttle(self.physics.state.cart_z)
             self.model3d.draw_operator_pedestal(self.physics.state.fsm_state, self.physics.state.emergency_stop)
 
-            # Dibujar cajas 3D sólidas (siempre visibles)
+            # Cajas dinámicas
             for box in self.boxes:
                 box.draw()
 
-            # Dibujar sensores y conos volumétricos (con Z-buffer protegido para nunca tapar las cajas)
-            self.model3d.draw_ultrasonic_sensor(self.physics.state.ultrasonic_dist_cm)
+            # Sensores y conos
+            self.model3d.draw_sonar_wave(self.physics.state.ultrasonic_dist_cm)
             self.model3d.draw_inspection_camera(self.physics.state.led_pwm)
 
-            # 6. Renderizado de Interfaz 2D (HUD)
+            # Renderizado de HUD 2D
             counts_tuple = (self.count_total, self.count_conforme, self.count_retrabajo, self.count_rechazo)
             self.hud.render(self.physics.state, self.clock.get_fps(), counts_tuple)
 
