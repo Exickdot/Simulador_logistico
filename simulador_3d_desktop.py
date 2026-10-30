@@ -355,24 +355,33 @@ class Primitive3D:
         glPopMatrix()
 
     @staticmethod
-    def draw_cone(x, y, z, r_base, height, color, alpha=0.3, segments=16):
+    def draw_cone(x, y, z, r_base, height, color, alpha=0.3, segments=20):
         glDisable(GL_LIGHTING)
         glDepthMask(GL_FALSE)
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE)
-        glColor4f(color[0], color[1], color[2], alpha)
         
         glPushMatrix()
         glTranslatef(x, y, z)
-        # Orientar hacia -X
-        glRotatef(-90, 0, 0, 1)
         
+        # Cono volumétrico translúcido apuntando hacia -X (hacia la faja y las cajas entrantes)
+        glColor4f(color[0], color[1], color[2], alpha)
         glBegin(GL_TRIANGLE_FAN)
-        glVertex3f(0.0, 0.0, 0.0)
+        glVertex3f(0.0, 0.0, 0.0)  # Vértice en la cara del sensor HC-SR04
         for i in range(segments + 1):
             angle = 2.0 * math.pi * i / segments
-            glVertex3f(math.cos(angle) * r_base, height, math.sin(angle) * r_base)
+            glVertex3f(-height, math.sin(angle) * r_base, math.cos(angle) * r_base)
         glEnd()
+
+        # Anillo perimetral en la base del haz acústico incidente
+        glColor4f(color[0], color[1], color[2], min(1.0, alpha * 2.5))
+        glLineWidth(1.8)
+        glBegin(GL_LINE_LOOP)
+        for i in range(segments):
+            angle = 2.0 * math.pi * i / segments
+            glVertex3f(-height, math.sin(angle) * r_base, math.cos(angle) * r_base)
+        glEnd()
+
         glPopMatrix()
         glDisable(GL_BLEND)
         glDepthMask(GL_TRUE)
