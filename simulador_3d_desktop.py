@@ -131,8 +131,8 @@ class WokwiHILBridge:
         if not self.is_connected or not self.ser:
             return
         now = time.time()
-        # Espaciado a 10 Hz (100 ms) para mantener la UART 100% holgada y sin desborde
-        if now - self.last_send_time < 0.10:
+        # Espaciado de telemetría a 33 Hz (~30 ms) para transmisión de alta fidelidad sin saturación
+        if now - self.last_send_time < 0.030:
             return
         self.last_send_time = now
         with self.lock:
@@ -164,6 +164,27 @@ class WokwiHILBridge:
                                     self.tlm_state["lux_pct"] = float(parts[4])
                                     self.tlm_state["servo_deg"] = float(parts[5])
                                     self.tlm_state["emergency"] = (parts[6] == '1')
+                        elif "PIEZA_EN_INSPECCION" in line:
+                            with self.lock:
+                                self.tlm_state["fsm_state"] = "INSPEC"
+                                self.tlm_state["pwm_motor"] = 0
+                        elif "CLASIFICACION_COMPLETA" in line:
+                            with self.lock:
+                                self.tlm_state["fsm_state"] = "DESVIO"
+                                self.tlm_state["pwm_motor"] = 180
+                                if "ANGULO" in line:
+                                    try:
+                                        import json
+                                        d = json.loads(line)
+                                        if "ANGULO" in d:
+                                            self.tlm_state["servo_deg"] = float(d["ANGULO"])
+                                    except Exception:
+                                        pass
+                        elif "COMPUERTA_RESTABLECIDA_NEUTRO" in line:
+                            with self.lock:
+                                self.tlm_state["fsm_state"] = "TRANSP"
+                                self.tlm_state["servo_deg"] = 90.0
+                                self.tlm_state["pwm_motor"] = 200
             except Exception:
                 break
         self.is_connected = False
@@ -1507,19 +1528,39 @@ class DigitalTwin3DApp:
                 with self.hil_bridge.lock:
                     tlm = dict(self.hil_bridge.tlm_state)
 
-                motor_pwm = tlm["pwm_motor"]
-                led_pwm = int(max(0, min(255, tlm["lux_pct"] * 2.55)))
-                servo_ang = tlm["servo_deg"]
                 fsm_st = tlm["fsm_state"]
-
-                self.firmware.fsm_state = fsm_st
-                self.firmware.servo_angle = servo_ang
+                servo_ang = tlm["servo_deg"]
+                led_pwm = int(max(0, min(255, tlm["lux_pct"] * 2.55)))
 
                 if tlm["emergency"]:
                     self.physics.state.emergency_stop = True
                 elif self.physics.state.emergency_stop and not tlm["emergency"]:
                     self.physics.state.emergency_stop = False
 
+                # Lazo 1 sincronizado: Seguir rigurosamente la ley de control de la simulación Python
+                # para asegurar desaceleración suave y parada a exactamente 10.3 cm bajo la cámara
+                if self.physics.state.emergency_stop:
+                    motor_pwm = 0
+                elif fsm_st in ("REPOSO", "IDLE"):
+                    motor_pwm = 0
+                elif fsm_st == "INSPEC":
+                    motor_pwm = 0
+                elif fsm_st == "DESVIO":
+                    motor_pwm = 180
+                elif fsm_st == "TRANSP":
+                    if closest_dist_cm <= 11.5:
+                        motor_pwm = 0
+                    elif closest_dist_cm >= 20.0:
+                        motor_pwm = 200
+                    else:
+                        factor = (closest_dist_cm - 11.5) / 8.5
+                        motor_pwm = int(80 + factor * 120)
+                        motor_pwm = max(80, min(200, motor_pwm))
+                else:
+                    motor_pwm = tlm["pwm_motor"]
+
+                self.firmware.fsm_state = fsm_st
+                self.firmware.servo_angle = servo_ang
                 self.physics.state.hil_connected = True
             else:
                 self.physics.state.hil_connected = False
@@ -1537,9 +1578,9 @@ class DigitalTwin3DApp:
                     break
 
             if active_target_box:
-                if active_target_box.quality == "RETRABAJO":
+                if abs(self.firmware.servo_angle - 45.0) < 15.0 or active_target_box.quality == "RETRABAJO":
                     self.firmware.target_cart_z = 0.16   # Desplaza tolva ámbar al centro
-                elif active_target_box.quality == "RECHAZO":
+                elif abs(self.firmware.servo_angle - 135.0) < 15.0 or active_target_box.quality == "RECHAZO":
                     self.firmware.target_cart_z = -0.16  # Desplaza tolva roja al centro
                 else:
                     self.firmware.target_cart_z = 0.0    # Tolva verde en el centro

@@ -77,7 +77,7 @@
 // Intervalos de Tareas No Bloqueantes (Task Scheduler basado en millis())
 #define PERIOD_ULTRASONIC_MS 60    // Muestreo HC-SR04 (no bloqueante)
 #define PERIOD_CONTROL_MS    50    // Lazos de control 1 y 3
-#define PERIOD_TELEMETRY_MS  200   // Envío de tramas por Serial/Bluetooth
+#define PERIOD_TELEMETRY_MS  30    // Envío de tramas periódicas por Serial/Bluetooth (33 Hz)
 #define PERIOD_LCD_MS        250   // Refresco de pantalla LCD
 #define PERIOD_FSM_MS        50    // Evaluación periódica de la FSM
 #define PERIOD_ALARM_BLINK_MS 200  // Parpadeo visual/acústico en Emergencia
@@ -415,10 +415,13 @@ void tareaMaquinaEstados() {
                 zonaInspeccionArmada = true;
             }
             // Si una nueva pieza entra a la zona de inspección (distancia <= 11.5 cm)
-            if (zonaInspeccionArmada && pvDistanciaCm <= DIST_MIN_STOP_CM && pvDistanciaCm >= 3.0f) {
+            if (zonaInspeccionArmada && pvDistanciaCm <= DIST_MIN_STOP_CM) {
                 estadoActual = ESTADO_INSPECCION;
+                cvPwmMotor = PWM_MOTOR_MIN;
+                actuarMotores(0, true);
                 tInicioInspeccion = now;
                 zonaInspeccionArmada = false;
+                tareaTelemetriaSerial(); // Notificación inmediata de parada con latencia cero
                 Serial.println(F("{\"EVENTO\":\"PIEZA_EN_INSPECCION\"}"));
             }
             break;
@@ -441,6 +444,8 @@ void tareaMaquinaEstados() {
                 // Transición a enrutamiento
                 estadoActual = ESTADO_DESVIO;
                 tInicioDesvio = now;
+                cvPwmMotor = PWM_MOTOR_EXPULSION;
+                actuarMotores(cvPwmMotor, true);
 
                 // Aplicar Lazo 2 (Posicionamiento de Servomotor)
                 if (piezaClasificada == PIEZA_RETRABAJO) {
@@ -451,6 +456,8 @@ void tareaMaquinaEstados() {
                     cvAnguloServo = SERVO_ANG_CONFORME;
                 }
                 actuarServo(cvAnguloServo);
+
+                tareaTelemetriaSerial(); // Notificación inmediata de desvío y nuevo ángulo
 
                 Serial.print(F("{\"EVENTO\":\"CLASIFICACION_COMPLETA\",\"RESULTADO\":\""));
                 Serial.print((piezaClasificada == PIEZA_CONFORME) ? F("CONFORME") : 
@@ -467,7 +474,11 @@ void tareaMaquinaEstados() {
             if (now - tInicioDesvio >= TIEMPO_DESVIO_MS) {
                 actuarServo(SERVO_ANG_CONFORME);
                 piezaClasificada = PIEZA_NINGUNA;
-                estadoActual = ESTADO_TRANSPORTE; // Vuelve a transporte o reposo
+                zonaInspeccionArmada = true; // Rearme garantizado para la siguiente pieza
+                estadoActual = ESTADO_TRANSPORTE; // Vuelve a transporte
+                cvPwmMotor = PWM_MOTOR_NOMINAL;
+                actuarMotores(cvPwmMotor, true);
+                tareaTelemetriaSerial(); // Notificación inmediata de retorno a marcha
                 Serial.println(F("{\"EVENTO\":\"COMPUERTA_RESTABLECIDA_NEUTRO\"}"));
             }
             break;
@@ -522,87 +533,110 @@ void tareaTelemetriaSerial() {
 }
 
 // =====================================================================================
-// PARSER DE COMANDOS SERIALES / BLUETOOTH
+// PARSER DE COMANDOS SERIALES / BLUETOOTH (NO BLOQUEANTE)
 // =====================================================================================
-void procesarComandosSeriales() {
-    if (!Serial.available()) return;
+void ejecutarComando(char* cmd) {
+    if (cmd[0] == '\0') return;
 
-    String cmd = Serial.readStringUntil('\n');
-    cmd.trim();
-    cmd.toUpperCase();
-
-    if (cmd.length() == 0) return;
-
-    if (cmd == F("START")) {
-        if (estadoActual == ESTADO_REPOSO) {
-            estadoActual = ESTADO_TRANSPORTE;
-            zonaInspeccionArmada = true;
-            Serial.println(F("{\"RESP\":\"CMD_OK\",\"ACCION\":\"INICIAR_TRANSPORTE\"}"));
-        } else if (estadoActual == ESTADO_TRANSPORTE) {
-            Serial.println(F("{\"RESP\":\"CMD_OK\",\"INFO\":\"YA_EN_TRANSPORTE\"}"));
-        } else if (estadoActual != ESTADO_EMERGENCIA) {
-            // Reanudar transporte de forma forzada si la estación quedó en espera
+    if (strncmp(cmd, "SIM:", 4) == 0) {
+        simulacionActiva = true;
+        char* comma = strchr(cmd + 4, ',');
+        if (comma) {
+            *comma = '\0';
+            pvDistanciaCm = atof(cmd + 4);
+            pvIluminacionPct = atof(comma + 1);
+        }
+        return; // Silencio absoluto para mantener el canal UART 100% fluido
+    }
+    if (strncmp(cmd, "SIM_DIST:", 9) == 0) {
+        simulacionActiva = true;
+        pvDistanciaCm = atof(cmd + 9);
+        return;
+    }
+    if (strncmp(cmd, "SIM_LDR:", 8) == 0) {
+        simulacionActiva = true;
+        pvIluminacionPct = atof(cmd + 8);
+        return;
+    }
+    if (strcmp(cmd, "START") == 0) {
+        if (estadoActual == ESTADO_REPOSO || (estadoActual != ESTADO_EMERGENCIA && estadoActual != ESTADO_TRANSPORTE)) {
             estadoActual = ESTADO_TRANSPORTE;
             zonaInspeccionArmada = true;
             actuarServo(SERVO_ANG_CONFORME);
-            Serial.println(F("{\"RESP\":\"CMD_OK\",\"ACCION\":\"REANUDAR_TRANSPORTE\"}"));
+            cvPwmMotor = PWM_MOTOR_NOMINAL;
+            actuarMotores(cvPwmMotor, true);
+            tareaTelemetriaSerial();
+            Serial.println(F("{\"RESP\":\"CMD_OK\",\"ACCION\":\"INICIAR_TRANSPORTE\"}"));
+        } else if (estadoActual == ESTADO_TRANSPORTE) {
+            Serial.println(F("{\"RESP\":\"CMD_OK\",\"INFO\":\"YA_EN_TRANSPORTE\"}"));
         } else {
             Serial.println(F("{\"RESP\":\"CMD_ERROR\",\"MOTIVO\":\"ESTADO_EMERGENCIA_ACTIVO\"}"));
         }
-    } else if (cmd == F("STOP")) {
+        return;
+    }
+    if (strcmp(cmd, "STOP") == 0) {
         if (estadoActual != ESTADO_EMERGENCIA) {
             estadoActual = ESTADO_REPOSO;
+            cvPwmMotor = 0;
             actuarMotores(0, false);
+            tareaTelemetriaSerial();
             Serial.println(F("{\"RESP\":\"CMD_OK\",\"ACCION\":\"DETENER_EN_REPOSO\"}"));
         }
-    } else if (cmd == F("RESET")) {
-        // Procedimiento seguro de Rearme de Parada de Emergencia
-        // Requiere que el pin 2 haya retornado a nivel ALTO (pulsador liberado)
+        return;
+    }
+    if (strcmp(cmd, "RESET") == 0) {
         if (digitalRead(PIN_EMERGENCY_STOP) == HIGH) {
             paradaEmergenciaActivada = false;
             flancoEmergenciaDetectado = false;
             estadoActual = ESTADO_REPOSO;
             zonaInspeccionArmada = true;
+            cvPwmMotor = 0;
             setSenalizadores(false, true, false, false);
             actuarServo(SERVO_ANG_CONFORME);
+            tareaTelemetriaSerial();
             Serial.println(F("{\"RESP\":\"REARME_EXITOSO\",\"NUEVO_ESTADO\":\"REPOSO\"}"));
         } else {
             Serial.println(F("{\"RESP\":\"REARME_FALLIDO\",\"MOTIVO\":\"PULSADOR_AUN_PRESIONADO\"}"));
         }
-    } else if (cmd.startsWith(F("CLASSIFY:"))) {
-        String tipo = cmd.substring(9);
-        if (tipo == F("CONFORME")) {
-            piezaClasificada = PIEZA_CONFORME;
-        } else if (tipo == F("RECHAZO")) {
-            piezaClasificada = PIEZA_RECHAZO;
-        } else if (tipo == F("RETRABAJO")) {
-            piezaClasificada = PIEZA_RETRABAJO;
-        }
+        return;
+    }
+    if (strncmp(cmd, "CLASSIFY:", 9) == 0) {
+        char* tipo = cmd + 9;
+        if (strcmp(tipo, "CONFORME") == 0) piezaClasificada = PIEZA_CONFORME;
+        else if (strcmp(tipo, "RECHAZO") == 0) piezaClasificada = PIEZA_RECHAZO;
+        else if (strcmp(tipo, "RETRABAJO") == 0) piezaClasificada = PIEZA_RETRABAJO;
         Serial.print(F("{\"RESP\":\"CMD_OK\",\"CLASIFICACION\":\""));
         Serial.print(tipo);
         Serial.println(F("\"}"));
-    } else if (cmd.startsWith(F("SIM:"))) {
-        // Trama atómica rápida: SIM:<dist_cm>,<lux_pct> (ej. SIM:8.2,78.0)
-        simulacionActiva = true;
-        int sepIdx = cmd.indexOf(',');
-        if (sepIdx > 4) {
-            pvDistanciaCm = cmd.substring(4, sepIdx).toFloat();
-            pvIluminacionPct = cmd.substring(sepIdx + 1).toFloat();
-        }
-        // Silencio absoluto en transmisión para mantener el canal UART 100% libre
-    } else if (cmd.startsWith(F("SIM_DIST:"))) {
-        simulacionActiva = true;
-        pvDistanciaCm = cmd.substring(9).toFloat();
-    } else if (cmd.startsWith(F("SIM_LDR:"))) {
-        simulacionActiva = true;
-        pvIluminacionPct = cmd.substring(8).toFloat();
-    } else if (cmd == F("SIM_OFF")) {
+        return;
+    }
+    if (strcmp(cmd, "SIM_OFF") == 0) {
         simulacionActiva = false;
         Serial.println(F("{\"RESP\":\"SIM_OFF\",\"MODO\":\"HARDWARE_REAL\"}"));
-    } else if (cmd.length() > 0) {
-        Serial.print(F("{\"RESP\":\"CMD_ERR\",\"CMD\":\""));
-        Serial.print(cmd);
-        Serial.println(F("\"}"));
+        return;
+    }
+}
+
+void procesarComandosSeriales() {
+    static char rxBuf[64];
+    static uint8_t rxIdx = 0;
+
+    while (Serial.available()) {
+        char c = (char)Serial.read();
+        if (c == '\r') continue;
+        if (c == '\n') {
+            rxBuf[rxIdx] = '\0';
+            if (rxIdx > 0) {
+                ejecutarComando(rxBuf);
+            }
+            rxIdx = 0;
+        } else {
+            if (rxIdx < sizeof(rxBuf) - 1) {
+                rxBuf[rxIdx++] = c;
+            } else {
+                rxIdx = 0; // Descarte de desborde
+            }
+        }
     }
 }
 

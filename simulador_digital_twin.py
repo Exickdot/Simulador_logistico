@@ -135,8 +135,8 @@ class WokwiHILBridge:
         if not self.is_connected or not self.ser:
             return
         now = time.time()
-        # Espaciado a 10 Hz (100 ms) para mantener la UART 100% holgada y sin desborde
-        if now - self.last_send_time < 0.10:
+        # Espaciado de telemetría a 33 Hz (~30 ms) para transmisión de alta fidelidad sin saturación
+        if now - self.last_send_time < 0.030:
             return
         self.last_send_time = now
         with self.lock:
@@ -168,6 +168,27 @@ class WokwiHILBridge:
                                     self.tlm_state["lux_pct"] = float(parts[4])
                                     self.tlm_state["servo_deg"] = float(parts[5])
                                     self.tlm_state["emergency"] = (parts[6] == '1')
+                        elif "PIEZA_EN_INSPECCION" in line:
+                            with self.lock:
+                                self.tlm_state["fsm_state"] = "INSPEC"
+                                self.tlm_state["pwm_motor"] = 0
+                        elif "CLASIFICACION_COMPLETA" in line:
+                            with self.lock:
+                                self.tlm_state["fsm_state"] = "DESVIO"
+                                self.tlm_state["pwm_motor"] = 180
+                                if "ANGULO" in line:
+                                    try:
+                                        import json
+                                        d = json.loads(line)
+                                        if "ANGULO" in d:
+                                            self.tlm_state["servo_deg"] = float(d["ANGULO"])
+                                    except Exception:
+                                        pass
+                        elif "COMPUERTA_RESTABLECIDA_NEUTRO" in line:
+                            with self.lock:
+                                self.tlm_state["fsm_state"] = "TRANSP"
+                                self.tlm_state["servo_deg"] = 90.0
+                                self.tlm_state["pwm_motor"] = 200
             except Exception:
                 break
         self.is_connected = False
