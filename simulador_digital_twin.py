@@ -1429,12 +1429,18 @@ class DigitalTwinApp:
 
     def on_spawn_package(self, quality_type: Optional[str] = None):
         self.plant.spawn_package(quality_type)
+        if self.plant.hil_bridge.is_connected and not self.plant.emergency_stop:
+            if self.plant.hil_bridge.tlm_state.get("fsm_state") == "REPOSO":
+                self.plant.hil_bridge.send_command("START")
 
     def toggle_wokwi_hil(self):
         if not self.plant.hil_bridge.is_connected:
             ok, msg = self.plant.hil_bridge.connect()
             if ok:
                 self._update_hil_ui_state(True)
+                if not self.plant.emergency_stop:
+                    time.sleep(0.05)
+                    self.plant.hil_bridge.send_command("START")
                 messagebox.showinfo(
                     "Enlace HIL Wokwi Exitoso",
                     f"¡Conexión establecida con Wokwi en puerto 4000!\n\n"

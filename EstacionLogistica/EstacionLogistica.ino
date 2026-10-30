@@ -137,6 +137,7 @@ unsigned long tInicioInspeccion = 0;
 bool estadoBlinkAlarma = false;
 bool modoInspeccionManual = false;
 bool simulacionActiva = false; // Permite sobreescribir entradas por comando Serial
+bool zonaInspeccionArmada = true; // Previene re-inspección cíclica de la misma pieza
 
 // Variables auxiliares para HC-SR04 No Bloqueante
 volatile unsigned long echoStartTime = 0;
@@ -351,8 +352,12 @@ void tareaLazosControl() {
             cvPwmMotor = constrain(cvPwmMotor, PWM_MOTOR_MIN, PWM_MOTOR_NOMINAL);
         }
         actuarMotores(cvPwmMotor, true);
+    } else if (estadoActual == ESTADO_DESVIO) {
+        // En desvío/expulsión: la faja debe avanzar para evacuar la pieza hacia la rampa/tolva
+        cvPwmMotor = PWM_MOTOR_NOMINAL;
+        actuarMotores(cvPwmMotor, true);
     } else {
-        // En reposo, inspección o desvío, la faja permanece detenida o a mínima velocidad
+        // En reposo o inspección estática, la faja permanece detenida
         cvPwmMotor = 0;
         actuarMotores(0, true);
     }
@@ -403,10 +408,15 @@ void tareaMaquinaEstados() {
 
         case ESTADO_TRANSPORTE:
             setSenalizadores(true, false, false, false); // Verde fijo = Marcha
-            // Si la pieza entra a la zona de inspección (distancia entre 6 cm y 10 cm)
-            if (pvDistanciaCm > 5.0f && pvDistanciaCm <= 10.0f) {
+            // Re-armar la zona de inspección cuando la faja se despeje (> 15 cm)
+            if (pvDistanciaCm > 15.0f) {
+                zonaInspeccionArmada = true;
+            }
+            // Si una nueva pieza entra a la zona de inspección (distancia entre 3 cm y 10 cm)
+            if (zonaInspeccionArmada && pvDistanciaCm <= 10.0f && pvDistanciaCm >= 3.0f) {
                 estadoActual = ESTADO_INSPECCION;
                 tInicioInspeccion = now;
+                zonaInspeccionArmada = false;
                 Serial.println(F("{\"EVENTO\":\"PIEZA_EN_INSPECCION\"}"));
             }
             break;
@@ -524,9 +534,18 @@ void procesarComandosSeriales() {
     if (cmd == F("START")) {
         if (estadoActual == ESTADO_REPOSO) {
             estadoActual = ESTADO_TRANSPORTE;
+            zonaInspeccionArmada = true;
             Serial.println(F("{\"RESP\":\"CMD_OK\",\"ACCION\":\"INICIAR_TRANSPORTE\"}"));
+        } else if (estadoActual == ESTADO_TRANSPORTE) {
+            Serial.println(F("{\"RESP\":\"CMD_OK\",\"INFO\":\"YA_EN_TRANSPORTE\"}"));
+        } else if (estadoActual != ESTADO_EMERGENCIA) {
+            // Reanudar transporte de forma forzada si la estación quedó en espera
+            estadoActual = ESTADO_TRANSPORTE;
+            zonaInspeccionArmada = true;
+            actuarServo(SERVO_ANG_CONFORME);
+            Serial.println(F("{\"RESP\":\"CMD_OK\",\"ACCION\":\"REANUDAR_TRANSPORTE\"}"));
         } else {
-            Serial.println(F("{\"RESP\":\"CMD_ERROR\",\"MOTIVO\":\"ESTADO_NO_VALIDO\"}"));
+            Serial.println(F("{\"RESP\":\"CMD_ERROR\",\"MOTIVO\":\"ESTADO_EMERGENCIA_ACTIVO\"}"));
         }
     } else if (cmd == F("STOP")) {
         if (estadoActual != ESTADO_EMERGENCIA) {
@@ -541,6 +560,7 @@ void procesarComandosSeriales() {
             paradaEmergenciaActivada = false;
             flancoEmergenciaDetectado = false;
             estadoActual = ESTADO_REPOSO;
+            zonaInspeccionArmada = true;
             setSenalizadores(false, true, false, false);
             actuarServo(SERVO_ANG_CONFORME);
             Serial.println(F("{\"RESP\":\"REARME_EXITOSO\",\"NUEVO_ESTADO\":\"REPOSO\"}"));

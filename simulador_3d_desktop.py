@@ -1293,6 +1293,9 @@ class DigitalTwin3DApp:
             if ok:
                 print(f"[HIL 3D] {msg}")
                 self._update_wokwi_button_state(True)
+                if not self.physics.state.emergency_stop:
+                    time.sleep(0.05)
+                    self.hil_bridge.send_command("START")
             else:
                 print(f"[HIL 3D WARN] {msg}")
                 self._update_wokwi_button_state(False)
@@ -1366,6 +1369,8 @@ class DigitalTwin3DApp:
         self.physics.reset_piece(quality)
         if self.firmware.fsm_state in ("REPOSO", "IDLE"):
             self.firmware.fsm_state = "TRANSP"
+        if self.hil_bridge.is_connected and not self.physics.state.emergency_stop:
+            self.hil_bridge.send_command("START")
 
     def run(self):
         running = True
@@ -1452,8 +1457,11 @@ class DigitalTwin3DApp:
                     self.box_spawn_timer = random.uniform(3.0, 4.5)
 
             # Auto-arranque si hay piezas en la faja y el firmware está en reposo
-            if self.firmware.fsm_state == "REPOSO" and any(b.state in ("EN_FAJA", "CAYENDO_DE_TOLVA") for b in self.boxes):
-                self.firmware.fsm_state = "TRANSP"
+            if any(b.state in ("EN_FAJA", "CAYENDO_DE_TOLVA") for b in self.boxes):
+                if self.firmware.fsm_state == "REPOSO":
+                    self.firmware.fsm_state = "TRANSP"
+                if self.hil_bridge.is_connected and self.hil_bridge.tlm_state.get("fsm_state") == "REPOSO" and not self.physics.state.emergency_stop:
+                    self.hil_bridge.send_command("START")
 
             # Detección sonar: Sensor en X = +0.47 apuntando hacia -X
             sensor_x = 0.47
