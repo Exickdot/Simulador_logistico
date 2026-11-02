@@ -1,7 +1,9 @@
 @echo off
-title Estación Logística Industrial - Simulador Digital Twin
+title Estacion Logistica Industrial - Gemelo Digital 3D Nativo (OpenGL)
+cd /d "%~dp0.."
 echo ======================================================================
-echo   INICIANDO SIMULADOR DIGITAL TWIN (ENTORNO VIRTUAL .venv)
+echo   INICIANDO MOTOR GRAFICO 3D NATIVO (OPENGL / PYGAME-CE)
+echo   Entorno Virtual: .venv (Sin dependencias externas ni web)
 echo ======================================================================
 echo.
 
@@ -12,11 +14,12 @@ if not exist ".venv\Scripts\python.exe" (
     .venv\Scripts\python.exe -m pip install -r requirements.txt
 )
 
-echo Ejecutando aplicacion SCADA...
-.venv\Scripts\python.exe simulador_digital_twin.py
+echo Ejecutando aplicacion grafica 3D de alta precision...
+.venv\Scripts\python.exe simulador_3d_desktop.py %*
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo [AVISO] La aplicacion finalizo con codigo %ERRORLEVEL%.
     pause
 )
+

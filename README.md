@@ -10,46 +10,44 @@ Incluye **Gemelo Digital 3D fotorrealista dual (C++ nativo de 496 KB y Python Py
 
 ```tree
 c:\PY\Auto_tif\
-├── EstacionLogistica\
-│   └── EstacionLogistica.ino          # Firmware maestro C++/Arduino (ATmega328P)
-├── cpp_digital_twin\
-│   ├── src\
-│   │   └── main.cpp                   # Gemelo Digital 3D en C++ nativo (Win32 + OpenGL)
-│   ├── bin\
-│   │   └── simulador_3d_cpp.exe       # Ejecutable standalone ultraligero de 496 KB (120+ FPS)
-│   ├── compilar.bat                   # Script de compilación automática con MinGW-w64
-│   └── w64devkit\                     # Toolchain portátil GCC/G++ incluido
-├── modelsd\                           # Subsistema de Modelado CAD 3D de Componentes
-│   ├── perfil_aluminio_2020.obj/.stl  # Perfil extruido de aluminio T-Slot 20x20 mm (360 mm)
-│   ├── rodillo_conveyor.obj/.stl      # Rodillo Ø 26 mm con eje de acero y rodamientos 608ZZ
-│   ├── pata_soporte_lateral.obj/.stl  # Pata de soporte estándar trapezoidal negra
-│   ├── pata_soporte_extendida.obj/.stl# Pata lateral con brazo de extensión longitudinal (72 mm)
-│   ├── torre_roja_ajustable.obj/.stl  # Torre vertical regulable con corredera para sensores
-│   ├── placa_soporte_sensor.obj/.stl  # Placa frontal ranurada GrabCAD (108x67 mm)
-│   ├── sensor_hcsr04_compacto.obj/.stl# Módulo ultrasónico HC-SR04 de alta precisión
-│   ├── banda_transportadora.obj/.stl  # Banda continua plana de caucho azul-gris (70 mm)
-│   ├── motor_nema17_drive.obj/.stl    # Motor NEMA 17 con acople flexible y escuadra
-│   ├── rampa_descarga.obj/.stl        # Rampa de evacuación de cajas con labios laterales
-│   ├── faja_transportadora_ensamble.obj/.stl # Ensamble Maestro Acoplado Integral (2,722 v / 4,956 f)
-│   ├── HC-SR04-UltrasonicSensor.obj/.stl     # Modelo CAD 1:1 independiente del sensor HC-SR04
-│   ├── piezas_faja.mtl                # Librería maestra de materiales PBR (aluminio, caucho, PLA)
-│   ├── model_builder.py               # Motor matemático de geometría analítica y exportador OBJ/STL
-│   ├── generate_parts.py              # Generador paramétrico de piezas individuales y ensamble
-│   ├── ver_faja_3d.py                 # Visor 3D interactivo con selector de piezas (0..9, TAB)
-│   ├── ver_faja_3d.bat                # Lanzador directo con doble clic del visor 3D de la faja
-│   └── ver_sensor_3d.py/.bat          # Visor 3D dedicado para el sensor HC-SR04
-├── emulator\
-│   ├── plant_emulator.py              # Emulador de física de planta y modo HIL
-│   ├── test_emulator.py               # Suite de pruebas unitarias de lazos de control
-│   └── requirements.txt               # Dependencias Python (Pygame, PyOpenGL, PySerial)
-├── simulador_3d_desktop.py            # Gemelo Digital 3D interactivo en Python (Pygame + OpenGL)
-├── simulador_digital_twin.py          # Simulador SCADA 2D en Python (Canvas 60 FPS)
-├── simulador_web.html                 # Simulador SCADA Web en HTML5 Canvas (sin dependencias)
-├── iniciar_simulador_cpp.bat          # Lanzador del Gemelo Digital 3D nativo C++
-├── iniciar_simulador_3d.bat           # Lanzador del Gemelo Digital 3D en Python
-├── iniciar_simulador.bat              # Lanzador del Simulador 2D SCADA
-├── MEMORIA_TECNICA.md                 # Documentación técnica formal, ecuaciones y tabla de FSM
-└── README.md                          # Guía de inicio rápido, especificaciones y manual de uso
+├── EstacionLogistica\                 # Firmware oficial C++ Arduino Uno R3 (IDE / CLI)
+│   ├── EstacionLogistica.ino          # Código maestro (FSM, Lazos 1/2/3, PWM, UART HIL)
+│   ├── libraries.txt                  # Librerías específicas Wokwi
+│   └── build\                         # Binarios ELF y HEX compilados
+├── emulator\                          # Emulador físico de planta en Python
+│   ├── plant_emulator.py              # Modelo diferencial y lazos cerrados continuos
+│   └── test_emulator.py               # Suite de pruebas unitarias
+├── matlab_calculos\                   # Suite de modelos dinámicos, estabilidad y validación MATLAB
+│   ├── main_analisis_autotif.m        # Script maestro integrador y consolidación de métricas
+│   ├── lazo1_velocidad_frenado.m      # Lazo 1: Motor DC, polos, amortiguamiento y parada a 10.3 cm
+│   ├── lazo2_servomotor_enrutamiento.m# Lazo 2: Dinámica SG90, 3 tolvas y carro indexador M-102
+│   ├── lazo3_fotometria_iluminacion.m # Lazo 3: LDR/LED, tiempo respuesta y compensación P/PI
+│   ├── mecanica_traccion_rampa.m     # Tracción faja, par motor NEMA 17, acústica y Smoothstep C1
+│   ├── simulacion_fsm_cooperativa.m   # RTOS millis(), FSM 6 estados, latencia ISR INT0 y OEE
+│   └── README.md                      # Memoria técnica formal y fundamentos matemáticos
+├── modelsd\                           # Geometría y modelos CAD 3D (GrabCAD)
+│   ├── faja_modular_estacion_3d.obj   # Chasis faja 2020 y rodillos
+│   ├── HC-SR04-UltrasonicSensor-meters.obj # Sensor ultrasónico en escala métrica
+│   ├── previews\                      # Renders y previsualizaciones PNG
+│   └── ...                            # Mallas OBJ, STL y materiales MTL
+├── docs\                              # Documentación técnica formal y diagramas
+│   ├── MEMORIA_TECNICA.md             # Modelado matemático, ecuaciones y tabla FSM
+│   ├── WOKWI_GUIA.md                  # Manual de simulación HIL Wokwi en VS Code
+│   ├── proyect_estutas.md             # Estado técnico y bitácora del proyecto
+│   └── diagramas\                     # Diagramas de instrumentación P&ID ISA 5.1
+│       ├── PID_ISA51_Editable_Visio.svg
+│       └── PID_ISA51_Referencia_Visio.png
+├── scripts\                           # Scripts de automatización y compilación
+│   ├── activar_entorno.bat            # Activación de entorno virtual .venv
+│   ├── compilar_arduino.bat           # Compilación con arduino-cli
+│   ├── ejecutar_pruebas.bat           # Ejecución de tests unitarios
+│   └── iniciar_simulador_3d.bat       # Lanzador 3D desde scripts
+├── diagram.json                       # Esquemático de circuito para Wokwi Simulator
+├── wokwi.toml                         # Configuración HIL VS Code (TCP localhost:4000)
+├── requirements.txt                   # Dependencias Python (pygame-ce, PyOpenGL)
+├── simulador_3d_desktop.py            # Motor gráfico 3D nativo industrial (OpenGL)
+├── iniciar_simulador_3d.bat           # Lanzador principal 1-clic del simulador 3D
+└── README.md                          # Guía de inicio rápido y especificaciones
 ```
 
 ---
@@ -207,5 +205,7 @@ Si desea modificar cotas milimétricas o generar nuevos modelos OBJ/STL:
 
 ## 📊 6. Documentación Adicional
 
-* [`MEMORIA_TECNICA.md`](file:///c:/PY/Auto_tif/MEMORIA_TECNICA.md): Modelado matemático de los 3 lazos continuos, ecuaciones diferenciales de fricción y tablas de transición de la FSM.
-* [`faja_transportadora_3d.md`](file:///c:/Users/alexn/.gemini/antigravity/brain/09a9911c-7590-417d-9edb-523386af58c7/faja_transportadora_3d.md): Documento interactivo con carruseles de renders fotorrealistas y comparativas visuales.
+* [`matlab_calculos/`](file:///c:/PY/Auto_tif/matlab_calculos/): Suite de scripts de simulación y validación matemática en MATLAB/Octave con los 3 lazos de control cerrados, estabilidad, demostración de parada por inercia a $10.3\text{ cm}$, acústica a 40 kHz y cinemática de rampa.
+* [`docs/MEMORIA_TECNICA.md`](file:///c:/PY/Auto_tif/docs/MEMORIA_TECNICA.md): Modelado matemático de los 3 lazos continuos, ecuaciones diferenciales de fricción y tablas de transición de la FSM.
+* [`docs/WOKWI_GUIA.md`](file:///c:/PY/Auto_tif/docs/WOKWI_GUIA.md): Guía de integración Hardware-In-The-Loop con Wokwi Simulator en VS Code vía RFC2217.
+* [`docs/diagramas/`](file:///c:/PY/Auto_tif/docs/diagramas/): Diagrama de Tuberías e Instrumentación (P&ID) bajo norma ANSI/ISA-5.1 en formato vectorial SVG y render PNG.

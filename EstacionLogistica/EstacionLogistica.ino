@@ -6,7 +6,7 @@
  * =====================================================================================
  * 
  * ASIGNACIÓN ESTRICTA DE PINES:
- *   - Pin 0 (RX), Pin 1 (TX) : Telemetría Serial / Bluetooth HC-05 (9600 baudios)
+ *   - Pin 0 (RX), Pin 1 (TX) : Telemetría Serial / Bluetooth HC-05 (115200 baudios)
  *   - Pin 2 (INT0)          : Pulsador Parada de Emergencia (FALLING, INPUT_PULLUP)
  *   - Pin 3 (PWM / OC2B)    : ENA Driver L298N (Lazo 1: Control Velocidad Faja DC)
  *   - Pin 4                 : IN1 Driver L298N (Dirección Motor DC)
@@ -49,7 +49,7 @@
 // =====================================================================================
 // CONSTANTES DE CONTROL Y CONFIGURACIÓN
 // =====================================================================================
-#define SERIAL_BAUD_RATE    9600
+#define SERIAL_BAUD_RATE    115200
 #define LCD_I2C_ADDR        0x27
 #define LCD_COLS            16
 #define LCD_ROWS            2
@@ -67,7 +67,7 @@
 #define SERVO_ANG_CONFORME  90     // Tolva Conforme / Paso Directo
 #define SERVO_ANG_RECHAZO   135    // Tolva de Rechazo
 #define TIEMPO_INSPECCION_MS 800   // Duración de inspección (0.8s) idéntica a Python
-#define TIEMPO_DESVIO_MS    1000   // Tiempo de expulsión (1.0s) idéntico a Python
+#define TIEMPO_DESVIO_MS    1250   // Tiempo de expulsión (1.25s) sincronizado con rampa física
 
 // Lazo 3: Iluminación de Inspección
 #define SP_LUX_DEFAULT      70.0f  // Setpoint nominal de iluminancia (0 - 100%)
@@ -77,8 +77,8 @@
 // Intervalos de Tareas No Bloqueantes (Task Scheduler basado en millis())
 #define PERIOD_ULTRASONIC_MS 60    // Muestreo HC-SR04 (no bloqueante)
 #define PERIOD_CONTROL_MS    50    // Lazos de control 1 y 3
-#define PERIOD_TELEMETRY_MS  30    // Envío de tramas periódicas por Serial/Bluetooth (33 Hz)
-#define PERIOD_LCD_MS        250   // Refresco de pantalla LCD
+#define PERIOD_TELEMETRY_MS  40    // Envío de tramas periódicas por Serial/Bluetooth (25 Hz fluido)
+#define PERIOD_LCD_MS        300   // Refresco de pantalla LCD inteligente
 #define PERIOD_FSM_MS        50    // Evaluación periódica de la FSM
 #define PERIOD_ALARM_BLINK_MS 200  // Parpadeo visual/acústico en Emergencia
 
@@ -215,7 +215,7 @@ void setup() {
     estadoActual = ESTADO_REPOSO;
     lcd.clear();
     
-    Serial.println(F("{\"MSG\":\"SISTEMA_INICIADO\",\"STATUS\":\"OK\",\"BAUD\":9600}"));
+    Serial.println(F("{\"MSG\":\"SISTEMA_INICIADO\",\"STATUS\":\"OK\",\"BAUD\":115200}"));
 }
 
 // =====================================================================================
@@ -494,22 +494,29 @@ void tareaMaquinaEstados() {
 // INTERFAZ DE USUARIO HMI (PANTALLA LCD 16x2 I2C)
 // =====================================================================================
 void tareaActualizarHMI() {
-    // Fila 0: [ESTADO] y Distancia
-    // Ej: "TRANSP | D: 18cm"
-    lcd.setCursor(0, 0);
+    static char prevL0[17] = "";
+    static char prevL1[17] = "";
+
+    // Fila 0: [ESTADO] y Distancia (Ej: "TRANSP|D: 18cm ")
     char linea0[17];
     const char* nombreEst = obtenerNombreEstado(estadoActual);
     int distInt = (int)pvDistanciaCm;
     snprintf(linea0, sizeof(linea0), "%-6s|D:%3dcm ", nombreEst, distInt);
-    lcd.print(linea0);
+    if (strcmp(linea0, prevL0) != 0) {
+        lcd.setCursor(0, 0);
+        lcd.print(linea0);
+        strncpy(prevL0, linea0, sizeof(prevL0));
+    }
 
-    // Fila 1: PWM Motor, Lux %, Ángulo Servo
-    // Ej: "M:140 L:70% S:90"
-    lcd.setCursor(0, 1);
+    // Fila 1: PWM Motor, Lux %, Ángulo Servo (Ej: "M:140 L:70% S: 90")
     char linea1[17];
     int luxInt = (int)pvIluminacionPct;
     snprintf(linea1, sizeof(linea1), "M:%3d L:%2d%% S:%3d", cvPwmMotor, luxInt, cvAnguloServo);
-    lcd.print(linea1);
+    if (strcmp(linea1, prevL1) != 0) {
+        lcd.setCursor(0, 1);
+        lcd.print(linea1);
+        strncpy(prevL1, linea1, sizeof(prevL1));
+    }
 }
 
 // =====================================================================================

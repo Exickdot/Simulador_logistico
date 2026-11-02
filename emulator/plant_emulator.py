@@ -234,11 +234,11 @@ class VirtualArduinoFirmware:
                 elif pv_lux >= 40.0:
                     self.piece_classification = "RETRABAJO"
                     self.servo_angle = 45
-                    self.target_cart_z = 0.16
+                    self.target_cart_z = 0.075
                 else:
                     self.piece_classification = "RECHAZO"
                     self.servo_angle = 135
-                    self.target_cart_z = -0.16
+                    self.target_cart_z = -0.075
                 
                 self.fsm_state = "DESVIO"
                 self.divert_timer = 0.0

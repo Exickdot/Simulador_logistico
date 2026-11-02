@@ -123,5 +123,11 @@ El sistema automatiza una estación logística industrial con tres lazos de cont
   - Creado el esquemático de simulación con resolución de inconsistencias de hardware (agregado LED IN2 en D7 para monitoreo completo del L298N).
   - Verificada la compatibilidad total de los ángulos de clasificación del Servomotor SG90 con la cinemática de tolvas del Gemelo Digital.
   - Documentada la guía completa de pruebas para capturas de informe en `WOKWI_GUIA.md`.
-- [ ] **Validación Matemática en MATLAB (Cuando el usuario lo requiera):**
-  - Script `.m` para funciones de transferencia de Lazos 1 y 3, respuesta al escalón, márgenes de fase y estabilidad.
+- [x] **Validación Matemática en MATLAB (`matlab_calculos/`):**
+  - Suite completa de scripts `.m` para modelado analítico, funciones de transferencia, diagramas de Bode/polos, amortiguamiento, cinemática y dinámica no lineal:
+    - `lazo1_velocidad_frenado.m`: Dinámica del motor DC, lazo anticolisión, polos en lazo cerrado ($\omega_n = 3.04\text{ rad/s}, \zeta = 1.10$) y demostración de parada exacta a $10.3\text{ cm}$ por inercia ($\Delta x = 1.18\text{ cm}$).
+    - `lazo2_servomotor_enrutamiento.m`: Modelo de 2do orden del servo SG90, mapeo PPM ($45^\circ, 90^\circ, 135^\circ$), par de deflexión ($SF = 24.3$) y cinemática sincronizada del carro indexador M-102.
+    - `lazo3_fotometria_iluminacion.m`: Balance fotométrico LDR/LED, tiempo de establecimiento ($128\text{ ms} < 150\text{ ms}$), rechazo a perturbaciones lumínicas y comparativa P vs PI (error nulo).
+    - `mecanica_traccion_rampa.m`: Fuerzas de tracción, par estático/dinámico, par motor NEMA 17 ($SF = 14.3$), física acústica a 40 kHz e interpolación tangencial Smoothstep $C^1$ ($-52^\circ$) sin choques en rampa.
+    - `simulacion_fsm_cooperativa.m`: Planificador cooperativo `millis()`, estados FSM, latencia de seguridad ISR INT0 ($< 5\ \mu\text{s}$), simulación estocástica de lote y cálculo de Throughput y OEE.
+    - `main_analisis_autotif.m`: Script maestro de ejecución global y consolidación de métricas de ingeniería.

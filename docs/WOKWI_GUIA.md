@@ -13,11 +13,15 @@ El proyecto incorpora Wokwi manteniendo compatibilidad total con el firmware nat
 c:\PY\Auto_tif\
 ├── EstacionLogistica\
 │   ├── EstacionLogistica.ino   # Firmware maestro oficial C++
-│   └── libraries.txt           # Declaración de librerías para Wokwi Web
+│   ├── libraries.txt           # Declaración de librerías para Wokwi Web
+│   └── build\                  # Binarios ELF y HEX compilados
+├── docs\
+│   └── WOKWI_GUIA.md           # Este documento de referencia
+├── scripts\
+│   └── compilar_arduino.bat    # Script de compilación con arduino-cli
 ├── diagram.json                # Circuito esquemático industrial en Wokwi
 ├── wokwi.toml                  # Descriptor de compilación para VS Code Wokwi
-├── libraries.txt               # Librerías globales (LiquidCrystal I2C, Servo)
-└── WOKWI_GUIA.md               # Este documento de referencia
+└── libraries.txt               # Librerías globales (LiquidCrystal I2C, Servo)
 ```
 
 ---

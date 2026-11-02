@@ -1,5 +1,6 @@
 @echo off
-title Estación Logística Industrial - Gemelo Digital 3D Nativo (OpenGL)
+title Estacion Logistica Industrial - Gemelo Digital 3D Nativo (OpenGL)
+cd /d "%~dp0"
 echo ======================================================================
 echo   INICIANDO MOTOR GRAFICO 3D NATIVO (OPENGL / PYGAME-CE)
 echo   Entorno Virtual: .venv (Sin dependencias externas ni web)
